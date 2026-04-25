@@ -3,7 +3,7 @@ CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 
 NAME = webserv
 
-SRC = src/main.cpp src/Webserv.cpp #src/Socket.cpp
+SRC = src/server/main.cpp src/server/Webserv.cpp src/server/Socket.cpp
 
 OBJ = $(SRC:.cpp=.o)
 
