@@ -45,7 +45,10 @@ void Webserv::addClientToPoll(int fd)
 
 void Webserv::removeClient(int index)
 {
-    close(_poll_fds[index].fd);
+    int fd = _poll_fds[index].fd;
+
+    close(fd);
+    _clients.erase(fd);
     _poll_fds.erase(_poll_fds.begin() + index);
 }
 
@@ -56,14 +59,20 @@ void Webserv::handleNewConnection()
         return;
 
     addClientToPoll(client_fd);
+    _clients.insert(std::make_pair(client_fd, Client(client_fd)));
 }
 
 void Webserv::handleClientData(int index)
 {
-    char buffer[1024];
-
     int fd = _poll_fds[index].fd;
 
+    std::map<int, Client>::iterator it = _clients.find(fd);
+    if (it == _clients.end())
+        return;
+
+    Client &client = it->second;
+
+    char buffer[1024];
     int bytes = recv(fd, buffer, sizeof(buffer) - 1, 0);
 
     if (bytes <= 0)
@@ -74,17 +83,26 @@ void Webserv::handleClientData(int index)
 
     buffer[bytes] = '\0';
 
-    std::cout << "Request:\n" << buffer << std::endl;
+    client.appendData(std::string(buffer));
 
+    if (!client.checkRequestComplete())
+        return;
+
+    std::cout << "FULL REQUEST \n";
+    std::cout << client.getRequest() << std::endl;
+
+    //TEMP RESPONSE (until HTTP methods implemented)
     std::string response =
         "HTTP/1.1 200 OK\r\n"
         "Content-Length: 13\r\n"
+        "Content-Type: text/plain\r\n"
         "\r\n"
         "Hello Webserv";
 
     send(fd, response.c_str(), response.size(), 0);
-}
 
+    client.reset();
+}
 void Webserv::startLoop()
 {
     while (true)

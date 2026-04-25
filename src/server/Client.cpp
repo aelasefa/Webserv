@@ -1,7 +1,10 @@
 #include "../../includes/Client.hpp"
+#include <cstdlib>
 
 Client::Client(int fd)
     : _fd(fd), _request(""), _isComplete(false), _contentLength(0) {}
+
+Client::~Client() {}
 
 void Client::appendData(const std::string &buffer)
 {
