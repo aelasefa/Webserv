@@ -1,4 +1,7 @@
 #include "../../includes/Webserv.hpp"
+#include "../../includes/Response.hpp"
+#include <fstream>
+#include <sstream>
 
 Webserv::Webserv(int port) : _port(port), _socket(port) {}
 
@@ -88,21 +91,84 @@ void Webserv::handleClientData(int index)
     if (!client.checkRequestComplete())
         return;
 
-    std::cout << "FULL REQUEST \n";
+    std::cout << "FULL REQUEST RECEIVED\n";
     std::cout << client.getRequest() << std::endl;
 
-    //TEMP RESPONSE (until HTTP methods implemented)
-    std::string response =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Length: 13\r\n"
-        "Content-Type: text/plain\r\n"
-        "\r\n"
-        "Hello Webserv";
+    Request req = parseRequest(client.getRequest());
 
-    send(fd, response.c_str(), response.size(), 0);
+    std::string body;
+    int status = routeRequest(req, body);
+
+    Response response;
+    response.setStatus(status);
+    response.setHeader("Content-Type", "text/plain");
+    response.setBody(body);
+
+    std::string rawResponse = response.build();
+    send(fd, rawResponse.c_str(), rawResponse.size(), 0);
 
     client.reset();
 }
+
+int Webserv::routeRequest(const Request &req, std::string &body)
+{
+    if (req.method == "GET")
+        return handleGET(req.path, body);
+
+    // else if (req.method == "POST")
+    //     return handlePOST(req.path, req.body);
+
+    // else if (req.method == "DELETE")
+    //     return handleDELETE(req.path);
+
+    body = "Method Not Allowed";
+    return 405;
+}
+
+int Webserv::handleGET(const std::string &path, std::string &body)
+{
+    std::string filePath = path;
+
+    if (filePath == "/")
+        filePath = "/index.html";
+
+    if (filePath.find("..") != std::string::npos)
+    {
+        body = "Forbidden";
+        return 403;
+    }
+
+    std::string fullPath = "./www" + filePath;
+    std::ifstream file(fullPath.c_str());
+    if (!file.is_open())
+    {
+        body = "Not Found";
+        return 404;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    body = buffer.str();
+    return 200;
+}
+
+Request Webserv::parseRequest(const std::string &raw)
+{
+    Request req;
+
+    size_t line_end = raw.find("\r\n");
+    std::string line = raw.substr(0, line_end);
+
+    size_t s1 = line.find(' ');
+    size_t s2 = line.find(' ', s1 + 1);
+
+    req.method = line.substr(0, s1);
+    req.path = line.substr(s1 + 1, s2 - s1 - 1);
+    req.version = line.substr(s2 + 1);
+
+    return req;
+}
+
 void Webserv::startLoop()
 {
     while (true)

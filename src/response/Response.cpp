@@ -1,4 +1,19 @@
 #include "../../includes/Response.hpp"
+#include <sstream>
+
+static std::string intToString(size_t value)
+{
+    std::ostringstream oss;
+    oss << value;
+    return oss.str();
+}
+
+static std::string intToString(int value)
+{
+    std::ostringstream oss;
+    oss << value;
+    return oss.str();
+}
 
 
 Response::Response() : statusCode(200),
@@ -48,12 +63,12 @@ void Response::setBody(const std::string& content) {
 std::string Response::build() const {
     std::string result;
     result += "HTTP/1.1 ";
-    result += std::to_string(statusCode);
+    result += intToString(statusCode);
     result += " ";
     result += statusMessage;
     result += "\r\n";
     std::map<std::string, std::string> tempHeaders = headers;
-    tempHeaders["Content-Length"] = std::to_string(body.size());
+    tempHeaders["Content-Length"] = intToString(body.size());
     for (std::map<std::string, std::string>::const_iterator it = tempHeaders.begin();
         it != tempHeaders.end(); ++it)
     {
