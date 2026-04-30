@@ -8,8 +8,10 @@
 
 class Location {
 public:
+    Location();       
+    void reset();
+    
     std::string path;
-
     std::string root;
     std::string index;
     std::string autoindex;

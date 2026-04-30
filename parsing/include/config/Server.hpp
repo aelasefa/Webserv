@@ -1,14 +1,15 @@
 #ifndef SERVER_HPP
 #define SERVER_HPP
 
-#include <string>
-#include <vector>
+
 #include "Location.hpp"
 
 #include <map>
 
 class Server {
 public:
+    void reset();
+    Server();
     int listen;
     std::string host;
     std::string root;

@@ -1,9 +1,13 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include <iostream>
+#include <string>
 #include <vector>
 #include "Server.hpp"
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <cstdlib>
 
 enum State {
     NONE,
