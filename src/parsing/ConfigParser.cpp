@@ -7,6 +7,7 @@ Location::Location() {
     index = "";
     autoindex = "";
     redirect = "";
+    redirect_code = 301;
     alias = "";
 }
 
@@ -49,6 +50,7 @@ void Location::reset() {
     index = "";
     autoindex = "";
     redirect = "";
+    redirect_code = 301;
     alias = "";
     methods.clear();
     cgi_path.clear();
@@ -152,18 +154,24 @@ void ConfigParser::parse_location_directive(const std::string& key,
         iss >> value;
         loc.autoindex = strip_semicolon(value);
     }
-    else if (key == "return") {
-        std::string first;
-        iss >> first;
-        std::string second;
-        if (is_number(first)) {
-            if (iss >> second) {
-                loc.redirect = strip_semicolon(second);
-            }
+   else if (key == "return") {
+    std::string first;
+    iss >> first;
+    std::string second;
+    
+    if (is_number(first)) {
+        loc.redirect_code = std::atoi(first.c_str()); 
+        if (iss >> second) {
+            loc.redirect = strip_semicolon(second);   
         } else {
-            loc.redirect = strip_semicolon(first);
+            loc.redirect = "/";
+            std::cerr << "Warning: 'return " << first << "' with no URL, using '/'" << std::endl;
         }
+    } else {
+        loc.redirect_code = 301;                     
+        loc.redirect = strip_semicolon(first);       
     }
+}
     else if (key == "alias") {
         std::string value;
         iss >> value;

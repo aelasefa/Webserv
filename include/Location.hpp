@@ -16,6 +16,7 @@ public:
     std::string index;
     std::string autoindex;
     std::string redirect;
+    int         redirect_code;
     std::string alias;
 
     std::vector<std::string> methods;
