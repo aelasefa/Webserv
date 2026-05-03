@@ -33,8 +33,8 @@ int main()
         return 1;
     }
 
-    std::string response = MethodHandler::handle(req);
-    client.setResponse(response);
+    Response response = MethodHandler::handle(req);
+    client.setResponse(response.build());
 
     while (!client.responseComplete())
     {
