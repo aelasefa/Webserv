@@ -54,72 +54,68 @@ namespace
     }
 }
 
-std::string FileHandler::buildResponse(const std::string &status,
-                                       const std::string &body,
-                                       const std::string &contentType,
-                                       const std::string &connection)
+Response FileHandler::buildResponse(int status,
+                                    const std::string &body,
+                                    const std::string &contentType,
+                                    const std::string &connection)
 {
-    std::ostringstream oss;
-
-    oss << "HTTP/1.1 " << status << "\r\n";
-    oss << "Content-Type: " << contentType << "\r\n";
-    oss << "Content-Length: " << body.size() << "\r\n";
-    oss << "Connection: " << connection << "\r\n";
-    oss << "\r\n";
-    oss << body;
-
-    return oss.str();
+    Response resp;
+    resp.setStatus(status);
+    resp.setHeader("Content-Type", contentType);
+    resp.setHeader("Connection", connection);
+    resp.setBody(body);
+    return resp;
 }
 
-std::string FileHandler::get(const std::string &path, const std::string &connection)
+Response FileHandler::get(const std::string &path, const std::string &connection)
 {
     std::string normalized;
     if (!normalizePath(path, normalized))
-        return buildResponse("403 Forbidden", "Forbidden", "text/plain", connection);
+        return buildResponse(403, "Forbidden", "text/plain", connection);
 
     std::string fullPath = std::string(DOC_ROOT) + normalized;
 
     std::ifstream file(fullPath.c_str(), std::ios::in | std::ios::binary);
     if (!file.is_open())
-        return buildResponse("404 Not Found", "File not found", "text/plain", connection);
+        return buildResponse(404, "File not found", "text/plain", connection);
 
     std::stringstream buffer;
     buffer << file.rdbuf();
 
-    return buildResponse("200 OK", buffer.str(), "text/plain", connection);
+    return buildResponse(200, buffer.str(), "text/plain", connection);
 }
 
-std::string FileHandler::post(const std::string &path, const std::string &body, const std::string &connection)
+Response FileHandler::post(const std::string &path, const std::string &body, const std::string &connection)
 {
     std::string normalized;
     if (!normalizePath(path, normalized))
-        return buildResponse("403 Forbidden", "Forbidden", "text/plain", connection);
+        return buildResponse(403, "Forbidden", "text/plain", connection);
 
     std::string fullPath = std::string(DOC_ROOT) + normalized;
 
     std::ofstream file(fullPath.c_str(), std::ios::out | std::ios::binary);
     if (!file.is_open())
-        return buildResponse("500 Internal Server Error", "Cannot write file", "text/plain", connection);
+        return buildResponse(500, "Cannot write file", "text/plain", connection);
 
     file << body;
     file.close();
 
-    return buildResponse("201 Created", "File created/updated", "text/plain", connection);
+    return buildResponse(201, "File created/updated", "text/plain", connection);
 }
 
-std::string FileHandler::del(const std::string &path, const std::string &connection)
+Response FileHandler::del(const std::string &path, const std::string &connection)
 {
     std::string normalized;
     if (!normalizePath(path, normalized))
-        return buildResponse("403 Forbidden", "Forbidden", "text/plain", connection);
+        return buildResponse(403, "Forbidden", "text/plain", connection);
 
     std::string fullPath = std::string(DOC_ROOT) + normalized;
 
     if (access(fullPath.c_str(), F_OK) != 0)
-        return buildResponse("404 Not Found", "File not found", "text/plain", connection);
+        return buildResponse(404, "File not found", "text/plain", connection);
 
     if (std::remove(fullPath.c_str()) != 0)
-        return buildResponse("500 Internal Server Error", "Delete failed", "text/plain", connection);
+        return buildResponse(500, "Delete failed", "text/plain", connection);
 
-    return buildResponse("200 OK", "File deleted", "text/plain", connection);
+    return buildResponse(200, "File deleted", "text/plain", connection);
 }

@@ -2,19 +2,20 @@
 #define FILEHANDLER_HPP
 
 #include <string>
+#include "Response.hpp"
 
 class FileHandler
 {
 public:
-    static std::string get(const std::string &path, const std::string &connection);
-    static std::string post(const std::string &path, const std::string &body, const std::string &connection);
-    static std::string del(const std::string &path, const std::string &connection);
+    static Response get(const std::string &path, const std::string &connection);
+    static Response post(const std::string &path, const std::string &body, const std::string &connection);
+    static Response del(const std::string &path, const std::string &connection);
 
 private:
-    static std::string buildResponse(const std::string &status,
-                                     const std::string &body,
-                                     const std::string &contentType,
-                                     const std::string &connection);
+    static Response buildResponse(int status,
+                                  const std::string &body,
+                                  const std::string &contentType,
+                                  const std::string &connection);
 };
 
 #endif

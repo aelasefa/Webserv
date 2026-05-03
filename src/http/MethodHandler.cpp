@@ -1,12 +1,33 @@
 #include "../../includes/MethodHandler.hpp"
 #include "../../includes/FileHandler.hpp"
 
-std::string MethodHandler::handle(const Request &req)
+namespace
+{
+    int parseStatusCode(const std::string &status)
+    {
+        if (status.size() < 3)
+            return 400;
+
+        int code = 0;
+        for (size_t i = 0; i < 3; i++)
+        {
+            if (status[i] < '0' || status[i] > '9')
+                return 400;
+            code = code * 10 + (status[i] - '0');
+        }
+
+        return code;
+    }
+}
+
+Response MethodHandler::handle(const Request &req)
 {
     if (req.hasError())
     {
-        std::string status = req.getErrorStatus().empty() ? "400 Bad Request" : req.getErrorStatus();
-        return "HTTP/1.1 " + status + "\r\nConnection: " + req.getConnectionHeader() + "\r\nContent-Length: 0\r\n\r\n";
+        Response resp;
+        resp.setStatus(parseStatusCode(req.getErrorStatus()));
+        resp.setHeader("Connection", req.getConnectionHeader());
+        return resp;
     }
 
     if (req.getMethod() == "GET")
@@ -18,20 +39,23 @@ std::string MethodHandler::handle(const Request &req)
     if (req.getMethod() == "DELETE")
         return handleDelete(req);
 
-    return "HTTP/1.1 405 Method Not Allowed\r\nConnection: " + req.getConnectionHeader() + "\r\nContent-Length: 0\r\n\r\n";
+    Response resp;
+    resp.setStatus(405);
+    resp.setHeader("Connection", req.getConnectionHeader());
+    return resp;
 }
 
-std::string MethodHandler::handleGet(const Request &req)
+Response MethodHandler::handleGet(const Request &req)
 {
     return FileHandler::get(req.getPath(), req.getConnectionHeader());
 }
 
-std::string MethodHandler::handlePost(const Request &req)
+Response MethodHandler::handlePost(const Request &req)
 {
     return FileHandler::post(req.getPath(), req.getBody(), req.getConnectionHeader());
 }
 
-std::string MethodHandler::handleDelete(const Request &req)
+Response MethodHandler::handleDelete(const Request &req)
 {
     return FileHandler::del(req.getPath(), req.getConnectionHeader());
 }

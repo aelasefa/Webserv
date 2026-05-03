@@ -1,6 +1,7 @@
 #include "../../includes/Webserv.hpp"
 #include "../../includes/MethodHandler.hpp"
 #include "../../includes/Request.hpp"
+#include "../../includes/Response.hpp"
 #include <cerrno>
 
 Webserv::Webserv(int port) : _port(port), _socket(port) {}
@@ -108,8 +109,8 @@ void Webserv::handleClientData(int index)
     if (!parsed && !req.hasError())
         return;
 
-    std::string response = MethodHandler::handle(req);
-    client.setResponse(response);
+    Response response = MethodHandler::handle(req);
+    client.setResponse(response.build());
 
     if (client.sendData() < 0)
     {

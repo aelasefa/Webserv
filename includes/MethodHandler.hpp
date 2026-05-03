@@ -3,16 +3,17 @@
 
 #include <string>
 #include "Request.hpp"
+#include "Response.hpp"
 
 class MethodHandler
 {
 public:
-    static std::string handle(const Request &req);
+    static Response handle(const Request &req);
 
 private:
-    static std::string handleGet(const Request &req);
-    static std::string handlePost(const Request &req);
-    static std::string handleDelete(const Request &req);
+    static Response handleGet(const Request &req);
+    static Response handlePost(const Request &req);
+    static Response handleDelete(const Request &req);
 };
 
 #endif

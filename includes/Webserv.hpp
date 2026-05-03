@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include "Client.hpp"
+#include "Request.hpp"
 
 class Webserv
 {
@@ -19,7 +20,7 @@ private:
 public:
     Webserv(int port);
     ~Webserv();
-    
+
     void initServer();
     void startLoop();
 
@@ -29,6 +30,7 @@ public:
 
     void handleNewConnection();
     void handleClientData(int index);
+
 };
 
 #endif
