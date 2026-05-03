@@ -1,4 +1,5 @@
 #include "../../includes/Webserv.hpp"
+#include <cerrno>
 
 Webserv::Webserv(int port) : _port(port), _socket(port) {}
 
@@ -75,8 +76,18 @@ void Webserv::handleClientData(int index)
     char buffer[1024];
     int bytes = recv(fd, buffer, sizeof(buffer) - 1, 0);
 
-    if (bytes <= 0)
+    if (bytes == 0)
     {
+        std::cout << "Client disconnected fd=" << fd << std::endl;
+        removeClient(index);
+        return;
+    }
+    if (bytes < 0)
+    {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return;
+
+        std::cerr << "recv error on fd=" << fd << std::endl;
         removeClient(index);
         return;
     }
@@ -103,29 +114,56 @@ void Webserv::handleClientData(int index)
 
     client.reset();
 }
+
 void Webserv::startLoop()
 {
     while (true)
     {
         int ret = poll(&_poll_fds[0], _poll_fds.size(), -1);
+
         if (ret < 0)
         {
-            std::cerr << "Poll error\n";
-            continue;
+            if (errno == EINTR)
+                continue;
+
+            std::cerr << "Poll fatal error\n";
+            break;
         }
-        for (size_t i = 0; i < _poll_fds.size(); i++)
+
+        for (size_t i = 0; i < _poll_fds.size();)
         {
-            if (_poll_fds[i].revents & POLLIN)
+            short revents = _poll_fds[i].revents;
+
+            if (revents == 0)
             {
-                if (_poll_fds[i].fd == _socket.getFd())
-                {
-                    handleNewConnection();
-                }
-                else
-                {
-                    handleClientData(i);
-                }
+                i++;
+                continue;
             }
+
+            int fd = _poll_fds[i].fd;
+
+            if (revents & (POLLHUP | POLLERR | POLLNVAL))
+            {
+                std::cout << "Client error/disconnect fd=" << fd << std::endl;
+                removeClient(i);
+                continue;
+            }
+
+            if (fd == _socket.getFd())
+            {
+                if (revents & POLLIN)
+                    handleNewConnection();
+            }
+            else
+            {
+                if (revents & POLLIN)
+                    handleClientData(i);
+
+                // if (revents & POLLOUT)
+                //     handleSend(i);
+            }
+
+            i++;
         }
     }
 }
