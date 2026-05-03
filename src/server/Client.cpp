@@ -38,7 +38,7 @@ void Client::appendData(const std::string &buffer)
 {
     if (_request.size() + buffer.size() > MAX_REQUEST_SIZE)
     {
-        _isComplete = true; // reject oversized request
+        _isComplete = true;
         return;
     }
 

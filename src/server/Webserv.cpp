@@ -1,4 +1,6 @@
 #include "../../includes/Webserv.hpp"
+#include "../../includes/MethodHandler.hpp"
+#include "../../includes/Request.hpp"
 #include <cerrno>
 
 Webserv::Webserv(int port) : _port(port), _socket(port) {}
@@ -99,20 +101,32 @@ void Webserv::handleClientData(int index)
     if (!client.checkRequestComplete())
         return;
 
-    std::cout << "FULL REQUEST \n";
-    std::cout << client.getRequest() << std::endl;
+    Request req;
+    std::string parseBuffer = client.getRequest();
+    bool parsed = req.parse(parseBuffer);
 
-    //TEMP RESPONSE (until HTTP methods implemented)
-    std::string response =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Length: 13\r\n"
-        "Content-Type: text/plain\r\n"
-        "\r\n"
-        "Hello Webserv";
+    if (!parsed && !req.hasError())
+        return;
 
-    send(fd, response.c_str(), response.size(), 0);
+    std::string response = MethodHandler::handle(req);
+    client.setResponse(response);
 
-    client.reset();
+    if (client.sendData() < 0)
+    {
+        removeClient(index);
+        return;
+    }
+
+    if (client.responseComplete())
+    {
+        if (req.shouldClose())
+        {
+            removeClient(index);
+            return;
+        }
+
+        client.reset();
+    }
 }
 
 void Webserv::startLoop()
