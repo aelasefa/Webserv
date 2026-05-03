@@ -1,5 +1,5 @@
 
-#include "../../include/config/ConfigParser.hpp"
+#include "../../includes/ConfigParser.hpp"
 
 Location::Location() {
     path = "";
