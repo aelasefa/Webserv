@@ -4,8 +4,8 @@ CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 NAME = webserv
 
 SRC = src/main.cpp src/server/Webserv.cpp src/server/Socket.cpp src/server/Client.cpp \
-	src/parsing/Request.cpp src/http/MethodHandler.cpp src/http/FileHandler.cpp \
-	src/response/Response.cpp src/utils/Utils.cpp
+	src/parsing/Request.cpp src/parsing/ConfigParser.cpp src/http/MethodHandler.cpp \
+	src/http/FileHandler.cpp src/response/Response.cpp src/utils/Utils.cpp
 
 OBJ = $(SRC:.cpp=.o)
 
