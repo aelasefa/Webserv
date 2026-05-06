@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include "Request.hpp"
 #include "Response.hpp"
 
 class CGI

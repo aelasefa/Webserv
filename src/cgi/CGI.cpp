@@ -35,17 +35,17 @@ std::string CGI::execute(const Request& request) {
             NULL
         };
         execve(_interpreter.c_str(), argv, environ);
-        return NULL;
+        _exit(1);
     } else {
         close(inputPipe[0]);
         close(outputPipe[1]);
-        write(inputPipe[1], request.body.c_str(),
-        request.body.size());
+        const std::string body = request.getBody();
+        write(inputPipe[1], body.c_str(), body.size());
         close(inputPipe[1]);
         char buffer[1024];
         std::string result;
         ssize_t bytes;
-        while ((bytes == read(outputPipe[0], buffer, sizeof(buffer))) > 0)
+        while ((bytes = read(outputPipe[0], buffer, sizeof(buffer))) > 0)
             result.append(buffer, bytes);
         close(outputPipe[0]);
         waitpid(pid, NULL, 0);
