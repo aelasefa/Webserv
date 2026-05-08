@@ -8,6 +8,9 @@ Request::Request()
 {
     _state = START_LINE;
     _contentLength = 0;
+    _hasContentLength = false;
+    _hasTransferEncoding = false;
+    _hasHost = false;
     _errorStatus.clear();
     _shouldClose = true;
 }
@@ -23,6 +26,9 @@ void Request::reset()
     _headers.clear();
     _body.clear();
     _contentLength = 0;
+    _hasContentLength = false;
+    _hasTransferEncoding = false;
+    _hasHost = false;
     _errorStatus.clear();
     _shouldClose = true;
 }
@@ -112,6 +118,10 @@ bool Request::parseStartLine(std::string &line)
 
     ss >> _method >> _path >> _version;
 
+    std::string extra;
+    if (ss >> extra)
+        return false;
+
     if (_method.empty() || _path.empty() || _version.empty())
         return false;
 
@@ -148,7 +158,7 @@ bool Request::parseHeaders(std::string &buffer)
 
         if (line.empty())
         {
-            if (_headers.find("content-length") != _headers.end())
+            if (_hasContentLength)
             {
                 std::string cl = _headers["content-length"];
                 if (!Utils::isNumeric(cl))
@@ -176,9 +186,12 @@ bool Request::parseHeaders(std::string &buffer)
 
                 _contentLength = static_cast<size_t>(len);
             }
-            else
+
+            if (_method == "POST" && !_hasContentLength)
             {
-                _contentLength = 0;
+                _errorStatus = "411 Length Required";
+                _state = ERROR;
+                return false;
             }
 
             if (_version == "HTTP/1.1" && _headers.find("host") == _headers.end())
@@ -217,6 +230,40 @@ bool Request::parseHeaders(std::string &buffer)
             _errorStatus = "400 Bad Request";
             _state = ERROR;
             return false;
+        }
+
+        if (key == "host")
+        {
+            if (_hasHost)
+            {
+                _errorStatus = "400 Bad Request";
+                _state = ERROR;
+                return false;
+            }
+            _hasHost = true;
+        }
+
+        if (key == "content-length")
+        {
+            if (_hasContentLength)
+            {
+                _errorStatus = "400 Bad Request";
+                _state = ERROR;
+                return false;
+            }
+            _hasContentLength = true;
+        }
+
+        if (key == "transfer-encoding")
+        {
+            _hasTransferEncoding = true;
+            std::string val = Utils::toLower(value);
+            if (val != "identity")
+            {
+                _errorStatus = "501 Not Implemented";
+                _state = ERROR;
+                return false;
+            }
         }
 
         _headers[key] = value;

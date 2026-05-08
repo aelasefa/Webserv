@@ -37,6 +37,15 @@ void Response::setStatus(int status) {
         case 405:
             statusMessage = "Method Not Allowed";
             break;
+        case 408:
+            statusMessage = "Request Timeout";
+            break;
+        case 411:
+            statusMessage = "Length Required";
+            break;
+        case 413:
+            statusMessage = "Payload Too Large";
+            break;
         case 500:
             statusMessage = "Internal Server Error";
             break;

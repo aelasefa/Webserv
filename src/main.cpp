@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <stdexcept>
+#include <ctime>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -17,6 +18,78 @@
 #include "../includes/ConfigParser.hpp"
 
 #define MAX_EVENTS 1024
+
+namespace
+{
+    const int POLL_TIMEOUT_MS = 1000;
+    const int CLIENT_IDLE_TIMEOUT_SEC = 60;
+
+    int parseStatusCode(const std::string &status)
+    {
+        if (status.size() < 3)
+            return 400;
+
+        int code = 0;
+        for (size_t i = 0; i < 3; i++)
+        {
+            if (status[i] < '0' || status[i] > '9')
+                return 400;
+            code = code * 10 + (status[i] - '0');
+        }
+
+        return code;
+    }
+
+    bool isServerFd(int fd, const std::vector<int> &server_fds)
+    {
+        for (size_t i = 0; i < server_fds.size(); i++)
+        {
+            if (server_fds[i] == fd)
+                return true;
+        }
+        return false;
+    }
+
+    void removeClientAt(size_t index, std::vector<pollfd> &fds, std::map<int, Client> &clients)
+    {
+        int fd = fds[index].fd;
+        close(fd);
+        clients.erase(fd);
+        fds.erase(fds.begin() + index);
+    }
+
+    bool processClientRequest(Client &client, pollfd &pfd)
+    {
+        Request req;
+        std::string raw = client.getRequest();
+        bool parsed = req.parse(raw);
+
+        if (!parsed && !req.hasError())
+            return false;
+
+        if (req.hasError())
+        {
+            Response res;
+            int code = parseStatusCode(req.getErrorStatus());
+            res.setStatus(code);
+            res.setHeader("Connection", "close");
+            res.setHeader("Content-Type", "text/plain");
+            res.setBody(req.getErrorStatus());
+            client.setResponse(res.build());
+            client.setCloseAfterResponse(true);
+            pfd.events = POLLOUT;
+            return true;
+        }
+
+        client.setRequestBuffer(raw);
+
+        Response res = MethodHandler::handle(req);
+        client.setResponse(res.build());
+        client.setCloseAfterResponse(req.shouldClose());
+        pfd.events = POLLOUT;
+        return true;
+    }
+}
 
 // ---------------- NON BLOCKING ----------------
 int setNonBlocking(int fd)
@@ -96,29 +169,58 @@ int main(int argc, char **argv)
     // ---------------- EVENT LOOP ----------------
     while (true)
     {
-        if (poll(&fds[0], fds.size(), -1) < 0)
+        int poll_ret = poll(&fds[0], fds.size(), POLL_TIMEOUT_MS);
+        if (poll_ret < 0)
         {
             perror("poll");
             break;
         }
 
+        time_t now = std::time(NULL);
+        for (size_t i = 0; i < fds.size();)
+        {
+            if (!isServerFd(fds[i].fd, server_fds))
+            {
+                std::map<int, Client>::iterator it = clients.find(fds[i].fd);
+                if (it != clients.end() && it->second.isIdle(now, CLIENT_IDLE_TIMEOUT_SEC))
+                {
+                    removeClientAt(i, fds, clients);
+                    continue;
+                }
+            }
+            i++;
+        }
+
         for (size_t i = 0; i < fds.size(); i++)
         {
+            if (fds[i].revents & (POLLHUP | POLLERR | POLLNVAL))
+            {
+                if (isServerFd(fds[i].fd, server_fds))
+                {
+                    close(fds[i].fd);
+                    for (size_t s = 0; s < server_fds.size(); s++)
+                    {
+                        if (server_fds[s] == fds[i].fd)
+                        {
+                            server_fds.erase(server_fds.begin() + s);
+                            break;
+                        }
+                    }
+                    fds.erase(fds.begin() + i);
+                    i--;
+                    continue;
+                }
+
+                removeClientAt(i, fds, clients);
+                i--;
+                continue;
+            }
+
             // ---------- NEW CONNECTION ----------
             if (fds[i].revents & POLLIN)
             {
                 // check if server socket
-                bool isServer = false;
-                for (size_t s = 0; s < server_fds.size(); s++)
-                {
-                    if (fds[i].fd == server_fds[s])
-                    {
-                        isServer = true;
-                        break;
-                    }
-                }
-
-                if (isServer)
+                if (isServerFd(fds[i].fd, server_fds))
                 {
                     int client_fd = accept(fds[i].fd, NULL, NULL);
                     if (client_fd < 0)
@@ -147,39 +249,26 @@ int main(int argc, char **argv)
 
                     if (!client.readData())
                     {
-                        close(fds[i].fd);
-                        clients.erase(fds[i].fd);
-                        fds.erase(fds.begin() + i);
+                        removeClientAt(i, fds, clients);
                         i--;
                         continue;
                     }
 
-                    if (client.checkRequestComplete())
+                    if (client.hasError())
                     {
-                        Request req;
-                        std::string raw = client.getRequest();
-                        bool parsed = req.parse(raw);
-
-                        if (!parsed && !req.hasError())
-                            continue;
-
-                        if (!parsed && req.hasError())
-                        {
-                            Response res;
-                            res.setStatus(400);
-                            res.setHeader("Connection", req.getConnectionHeader());
-                            res.setBody("Bad Request");
-                            client.setResponse(res.build());
-                        }
-                        else
-                        {
-                            // TODO: later → use config routing
-                            Response res = MethodHandler::handle(req);
-                            client.setResponse(res.build());
-                        }
-
+                        Response res;
+                        res.setStatus(client.getErrorCode());
+                        res.setHeader("Connection", "close");
+                        res.setHeader("Content-Type", "text/plain");
+                        res.setBody("Request too large");
+                        client.setResponse(res.build());
+                        client.setCloseAfterResponse(true);
                         fds[i].events = POLLOUT;
+                        continue;
                     }
+
+                    if (client.checkRequestComplete())
+                        processClientRequest(client, fds[i]);
                 }
             }
             // ---------- WRITE ----------
@@ -197,18 +286,32 @@ int main(int argc, char **argv)
 
                 if (client.sendData() < 0)
                 {
-                    close(fds[i].fd);
-                    clients.erase(fds[i].fd);
-                    fds.erase(fds.begin() + i);
+                    removeClientAt(i, fds, clients);
                     i--;
                     continue;
                 }
 
                 if (client.responseComplete())
                 {
-                    // TODO: respect Connection header
-                    client.reset();
-                    fds[i].events = POLLIN;
+                    if (client.shouldCloseAfterResponse())
+                    {
+                        removeClientAt(i, fds, clients);
+                        i--;
+                        continue;
+                    }
+
+                    std::string remaining = client.getRequest();
+                    client.resetForNextRequest(remaining);
+
+                    if (client.hasBufferedData())
+                    {
+                        if (!processClientRequest(client, fds[i]))
+                            fds[i].events = POLLIN;
+                    }
+                    else
+                    {
+                        fds[i].events = POLLIN;
+                    }
                 }
             }
         }

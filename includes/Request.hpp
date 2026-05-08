@@ -29,6 +29,9 @@ private:
     std::string _body;
 
     size_t _contentLength;
+    bool _hasContentLength;
+    bool _hasTransferEncoding;
+    bool _hasHost;
     std::string _errorStatus;
     bool _shouldClose;
 
