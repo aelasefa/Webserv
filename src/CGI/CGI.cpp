@@ -1,8 +1,5 @@
 #include "../../includes/CGI.hpp"
 
-#include <sys/wait.h>
-#include <sys/types.h>
-
 CGI::CGI() {}
 
 CGI::~CGI() {}
