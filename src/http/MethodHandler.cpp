@@ -1,6 +1,6 @@
 #include "../../includes/MethodHandler.hpp"
 #include "../../includes/FileHandler.hpp"
-#include "../../includes/Cgi.hpp"
+#include "../../includes/CGI.hpp"
 
 #include <unistd.h>
 #include <sstream>
@@ -151,7 +151,7 @@ Response MethodHandler::handleGet(const Request &req)
     std::string scriptPath;
     if (isCgiRequest(req, scriptPath))
     {
-        Cgi cgi;
+        CGI cgi;
         cgi.setInterpreter("/usr/bin/python3");
         cgi.setScriptPath(scriptPath);
         std::string output = cgi.execute(req);
@@ -166,7 +166,7 @@ Response MethodHandler::handlePost(const Request &req)
     std::string scriptPath;
     if (isCgiRequest(req, scriptPath))
     {
-        Cgi cgi;
+        CGI cgi;
         cgi.setInterpreter("/usr/bin/python3");
         cgi.setScriptPath(scriptPath);
         std::string output = cgi.execute(req);
