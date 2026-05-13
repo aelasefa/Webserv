@@ -4,8 +4,10 @@
 #include <string>
 #include <cstddef>
 #include <sys/types.h>
+#include <ctime>
+#include "Request.hpp"
 
-#define MAX_REQUEST_SIZE 8192
+#define MAX_REQUEST_SIZE (MAX_BODY_SIZE + 8192)
 
 class Client
 {
@@ -18,6 +20,11 @@ private:
 
     std::string _responseBuffer;
     size_t _bytesSent;
+
+    bool _hasError;
+    int _errorCode;
+    bool _closeAfterResponse;
+    time_t _lastActive;
 
 public:
     Client(int fd);
@@ -32,7 +39,21 @@ public:
     ssize_t sendData();
     bool responseComplete() const;
 
+    void setRequestBuffer(const std::string &buffer);
+    bool hasBufferedData() const;
+
+    void setError(int statusCode);
+    bool hasError() const;
+    int getErrorCode() const;
+
+    void setCloseAfterResponse(bool shouldClose);
+    bool shouldCloseAfterResponse() const;
+
+    void touch();
+    bool isIdle(time_t now, int timeoutSec) const;
+
     void reset();
+    void resetForNextRequest(const std::string &remaining);
 
     int getFd() const;
     const std::string &getRequest() const;

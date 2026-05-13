@@ -2,33 +2,95 @@
 #include "../../includes/MethodHandler.hpp"
 #include "../../includes/Request.hpp"
 #include "../../includes/Response.hpp"
-#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <stdexcept>
+#include <sys/socket.h>
+#include <unistd.h>
 
-Webserv::Webserv(int port) : _port(port), _socket(port) {}
+namespace
+{
+    const int POLL_TIMEOUT_MS = 1000;
+    const int CLIENT_IDLE_TIMEOUT_SEC = 60;
+
+    int parseStatusCode(const std::string &status)
+    {
+        if (status.size() < 3)
+            return 400;
+
+        int code = 0;
+        for (size_t i = 0; i < 3; i++)
+        {
+            if (status[i] < '0' || status[i] > '9')
+                return 400;
+            code = code * 10 + (status[i] - '0');
+        }
+
+        return code;
+    }
+
+    int setNonBlocking(int fd)
+    {
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags < 0)
+            return -1;
+        return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    int createServerSocket(int port)
+    {
+        int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_fd < 0)
+            throw std::runtime_error("socket failed");
+
+        int opt = 1;
+        setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        sockaddr_in addr;
+        std::memset(&addr, 0, sizeof(addr));
+
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = INADDR_ANY;
+        addr.sin_port = htons(port);
+
+        if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0)
+            throw std::runtime_error("bind failed");
+
+        if (listen(server_fd, SOMAXCONN) < 0)
+            throw std::runtime_error("listen failed");
+
+        setNonBlocking(server_fd);
+
+        std::cout << "[SERVER] Listening on port " << port << std::endl;
+
+        return server_fd;
+    }
+}
+
+Webserv::Webserv(const std::vector<Server> &servers) : _servers(servers) {}
 
 Webserv::~Webserv() {}
 
-void Webserv::initServer()
+void Webserv::initServers()
 {
-    if (!_socket.createSocket())
-        throw std::runtime_error("Socket creation failed");
+    if (_servers.empty())
+        throw std::runtime_error("no server defined in config");
 
-    if (!_socket.setSocketOptions())
-        throw std::runtime_error("Socket options failed");
-
-    if (!_socket.bindSocket())
-        throw std::runtime_error("Bind failed");
-
-    if (!_socket.listenSocket())
-        throw std::runtime_error("Listen failed");
-
-    addServerToPoll();
+    for (size_t i = 0; i < _servers.size(); i++)
+    {
+        int server_fd = createServerSocket(_servers[i].listen);
+        addServerToPoll(server_fd);
+        _server_fds.push_back(server_fd);
+    }
 }
 
-void Webserv::addServerToPoll()
+void Webserv::addServerToPoll(int server_fd)
 {
     pollfd pfd;
-    pfd.fd = _socket.getFd();
+    pfd.fd = server_fd;
     pfd.events = POLLIN;
     pfd.revents = 0;
 
@@ -37,7 +99,7 @@ void Webserv::addServerToPoll()
 
 void Webserv::addClientToPoll(int fd)
 {
-    _socket.setNonBlocking(fd);
+    setNonBlocking(fd);
 
     pollfd pfd;
     pfd.fd = fd;
@@ -47,26 +109,69 @@ void Webserv::addClientToPoll(int fd)
     _poll_fds.push_back(pfd);
 }
 
-void Webserv::removeClient(int index)
+bool Webserv::isServerFd(int fd) const
+{
+    for (size_t i = 0; i < _server_fds.size(); i++)
+    {
+        if (_server_fds[i] == fd)
+            return true;
+    }
+    return false;
+}
+
+void Webserv::removeClientAt(size_t index)
 {
     int fd = _poll_fds[index].fd;
-
     close(fd);
     _clients.erase(fd);
     _poll_fds.erase(_poll_fds.begin() + index);
 }
 
-void Webserv::handleNewConnection()
+void Webserv::handleNewConnection(int server_fd)
 {
-    int client_fd = _socket.acceptClient();
+    int client_fd = accept(server_fd, NULL, NULL);
     if (client_fd < 0)
         return;
 
     addClientToPoll(client_fd);
     _clients.insert(std::make_pair(client_fd, Client(client_fd)));
+
+    std::cout << "[CONNECT] fd=" << client_fd << std::endl;
 }
 
-void Webserv::handleClientData(int index)
+bool Webserv::processClientRequest(Client &client, pollfd &pfd)
+{
+    Request req;
+    std::string raw = client.getRequest();
+    bool parsed = req.parse(raw);
+
+    if (!parsed && !req.hasError())
+        return false;
+
+    if (req.hasError())
+    {
+        Response res;
+        int code = parseStatusCode(req.getErrorStatus());
+        res.setStatus(code);
+        res.setHeader("Connection", "close");
+        res.setHeader("Content-Type", "text/plain");
+        res.setBody(req.getErrorStatus());
+        client.setResponse(res.build());
+        client.setCloseAfterResponse(true);
+        pfd.events = POLLOUT;
+        return true;
+    }
+
+    client.setRequestBuffer(raw);
+
+    Response res = MethodHandler::handle(req);
+    client.setResponse(res.build());
+    client.setCloseAfterResponse(req.shouldClose());
+    pfd.events = POLLOUT;
+    return true;
+}
+
+void Webserv::handleClientRead(size_t index)
 {
     int fd = _poll_fds[index].fd;
 
@@ -76,57 +181,68 @@ void Webserv::handleClientData(int index)
 
     Client &client = it->second;
 
-    char buffer[1024];
-    int bytes = recv(fd, buffer, sizeof(buffer) - 1, 0);
-
-    if (bytes == 0)
+    if (!client.readData())
     {
-        std::cout << "Client disconnected fd=" << fd << std::endl;
-        removeClient(index);
-        return;
-    }
-    if (bytes < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return;
-
-        std::cerr << "recv error on fd=" << fd << std::endl;
-        removeClient(index);
+        removeClientAt(index);
         return;
     }
 
-    buffer[bytes] = '\0';
-
-    client.appendData(std::string(buffer));
-
-    if (!client.checkRequestComplete())
+    if (client.hasError())
+    {
+        Response res;
+        res.setStatus(client.getErrorCode());
+        res.setHeader("Connection", "close");
+        res.setHeader("Content-Type", "text/plain");
+        res.setBody("Request too large");
+        client.setResponse(res.build());
+        client.setCloseAfterResponse(true);
+        _poll_fds[index].events = POLLOUT;
         return;
+    }
 
-    Request req;
-    std::string parseBuffer = client.getRequest();
-    bool parsed = req.parse(parseBuffer);
+    if (client.checkRequestComplete())
+        processClientRequest(client, _poll_fds[index]);
+}
 
-    if (!parsed && !req.hasError())
+void Webserv::handleClientWrite(size_t index)
+{
+    int fd = _poll_fds[index].fd;
+
+    std::map<int, Client>::iterator it = _clients.find(fd);
+    if (it == _clients.end())
+    {
+        _poll_fds.erase(_poll_fds.begin() + index);
         return;
+    }
 
-    Response response = MethodHandler::handle(req);
-    client.setResponse(response.build());
+    Client &client = it->second;
 
     if (client.sendData() < 0)
     {
-        removeClient(index);
+        removeClientAt(index);
         return;
     }
 
     if (client.responseComplete())
     {
-        if (req.shouldClose())
+        if (client.shouldCloseAfterResponse())
         {
-            removeClient(index);
+            removeClientAt(index);
             return;
         }
 
-        client.reset();
+        std::string remaining = client.getRequest();
+        client.resetForNextRequest(remaining);
+
+        if (client.hasBufferedData())
+        {
+            if (!processClientRequest(client, _poll_fds[index]))
+                _poll_fds[index].events = POLLIN;
+        }
+        else
+        {
+            _poll_fds[index].events = POLLIN;
+        }
     }
 }
 
@@ -134,51 +250,71 @@ void Webserv::startLoop()
 {
     while (true)
     {
-        int ret = poll(&_poll_fds[0], _poll_fds.size(), -1);
+        if (_poll_fds.empty())
+            break;
 
-        if (ret < 0)
+        int poll_ret = poll(&_poll_fds[0], _poll_fds.size(), POLL_TIMEOUT_MS);
+        if (poll_ret < 0)
         {
-            if (errno == EINTR)
-                continue;
-
-            std::cerr << "Poll fatal error\n";
+            perror("poll");
             break;
         }
 
+        time_t now = std::time(NULL);
         for (size_t i = 0; i < _poll_fds.size();)
         {
-            short revents = _poll_fds[i].revents;
-
-            if (revents == 0)
+            if (!isServerFd(_poll_fds[i].fd))
             {
-                i++;
-                continue;
+                std::map<int, Client>::iterator it = _clients.find(_poll_fds[i].fd);
+                if (it != _clients.end() && it->second.isIdle(now, CLIENT_IDLE_TIMEOUT_SEC))
+                {
+                    removeClientAt(i);
+                    continue;
+                }
             }
-
-            int fd = _poll_fds[i].fd;
-
-            if (revents & (POLLHUP | POLLERR | POLLNVAL))
-            {
-                std::cout << "Client error/disconnect fd=" << fd << std::endl;
-                removeClient(i);
-                continue;
-            }
-
-            if (fd == _socket.getFd())
-            {
-                if (revents & POLLIN)
-                    handleNewConnection();
-            }
-            else
-            {
-                if (revents & POLLIN)
-                    handleClientData(i);
-
-                // if (revents & POLLOUT)
-                //     handleSend(i);
-            }
-
             i++;
+        }
+
+        for (size_t i = 0; i < _poll_fds.size(); i++)
+        {
+            if (_poll_fds[i].revents & (POLLHUP | POLLERR | POLLNVAL))
+            {
+                if (isServerFd(_poll_fds[i].fd))
+                {
+                    close(_poll_fds[i].fd);
+                    for (size_t s = 0; s < _server_fds.size(); s++)
+                    {
+                        if (_server_fds[s] == _poll_fds[i].fd)
+                        {
+                            _server_fds.erase(_server_fds.begin() + s);
+                            break;
+                        }
+                    }
+                    _poll_fds.erase(_poll_fds.begin() + i);
+                    i--;
+                    continue;
+                }
+
+                removeClientAt(i);
+                i--;
+                continue;
+            }
+
+            if (_poll_fds[i].revents & POLLIN)
+            {
+                if (isServerFd(_poll_fds[i].fd))
+                {
+                    handleNewConnection(_poll_fds[i].fd);
+                }
+                else
+                {
+                    handleClientRead(i);
+                }
+            }
+            else if (_poll_fds[i].revents & POLLOUT)
+            {
+                handleClientWrite(i);
+            }
         }
     }
 }

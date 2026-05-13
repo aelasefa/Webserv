@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <stdexcept>
+#include "Request.hpp"
 #include "Response.hpp"
 
 class Cgi

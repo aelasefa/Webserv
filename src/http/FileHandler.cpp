@@ -73,6 +73,9 @@ Response FileHandler::get(const std::string &path, const std::string &connection
     if (!normalizePath(path, normalized))
         return buildResponse(403, "Forbidden", "text/plain", connection);
 
+    if (!normalized.empty() && normalized[normalized.size() - 1] == '/')
+        normalized += "index.html";
+
     std::string fullPath = std::string(DOC_ROOT) + normalized;
 
     std::ifstream file(fullPath.c_str(), std::ios::in | std::ios::binary);
@@ -82,7 +85,7 @@ Response FileHandler::get(const std::string &path, const std::string &connection
     std::stringstream buffer;
     buffer << file.rdbuf();
 
-    return buildResponse(200, buffer.str(), "text/plain", connection);
+    return buildResponse(200, buffer.str(), "text/html", connection);
 }
 
 Response FileHandler::post(const std::string &path, const std::string &body, const std::string &connection)

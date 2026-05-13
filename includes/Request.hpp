@@ -23,12 +23,16 @@ private:
 
     std::string _method;
     std::string _path;
+    std::string _queryString;
     std::string _version;
 
     std::map<std::string, std::string> _headers;
     std::string _body;
 
     size_t _contentLength;
+    bool _hasContentLength;
+    bool _hasTransferEncoding;
+    bool _hasHost;
     std::string _errorStatus;
     bool _shouldClose;
 
@@ -52,9 +56,11 @@ public:
 
     std::string getMethod() const;
     std::string getPath() const;
+    std::string getQueryString() const;
     std::string getVersion() const;
     std::string getBody() const;
     const std::map<std::string, std::string>& getHeaders() const;
+    std::string getHeader(const std::string& key) const;
 };
 
 #endif

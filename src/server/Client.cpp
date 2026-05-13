@@ -3,21 +3,30 @@
 #include <sys/socket.h>
 #include <cstdlib>
 #include <cerrno>
+#include <cctype>
+#include <sstream>
 
 #define BUFFER_SIZE 4096
 
 Client::Client(int fd)
-    : _fd(fd),
-      _request(""),
-      _isComplete(false),
-      _contentLength(0),
-      _responseBuffer(""),
-      _bytesSent(0)
+        : _fd(fd),
+            _request(""),
+            _isComplete(false),
+            _contentLength(0),
+            _responseBuffer(""),
+            _bytesSent(0),
+            _hasError(false),
+            _errorCode(0),
+            _closeAfterResponse(false),
+            _lastActive(std::time(NULL))
 {
 }
 
 bool Client::readData()
 {
+    if (_hasError)
+        return true;
+
     char buffer[BUFFER_SIZE];
 
     ssize_t bytes = recv(_fd, buffer, BUFFER_SIZE, 0);
@@ -31,14 +40,18 @@ bool Client::readData()
         return false;
 
     appendData(std::string(buffer, bytes));
+    touch();
     return true;
 }
 
 void Client::appendData(const std::string &buffer)
 {
+    if (_hasError)
+        return;
+
     if (_request.size() + buffer.size() > MAX_REQUEST_SIZE)
     {
-        _isComplete = true;
+        setError(413);
         return;
     }
 
@@ -47,34 +60,58 @@ void Client::appendData(const std::string &buffer)
 
 bool Client::checkRequestComplete()
 {
+    if (_hasError)
+        return true;
+
     size_t pos = _request.find("\r\n\r\n");
     if (pos == std::string::npos)
         return false;
 
     std::string headers = _request.substr(0, pos);
+    std::string length_str;
 
-    size_t cl_pos = headers.find("Content-Length:");
+    std::istringstream lines(headers);
+    std::string line;
+    while (std::getline(lines, line))
+    {
+        if (!line.empty() && line[line.size() - 1] == '\r')
+            line.erase(line.size() - 1);
 
-    if (cl_pos == std::string::npos)
+        size_t sep = line.find(':');
+        if (sep == std::string::npos)
+            continue;
+
+        std::string key = line.substr(0, sep);
+        for (size_t i = 0; i < key.size(); ++i)
+            key[i] = std::tolower(key[i]);
+
+        if (key == "content-length")
+        {
+            length_str = line.substr(sep + 1);
+            while (!length_str.empty() && length_str[0] == ' ')
+                length_str.erase(0, 1);
+            break;
+        }
+    }
+
+    if (length_str.empty())
     {
         _isComplete = true;
         return true;
     }
 
-    size_t start = cl_pos + 15;
+    for (size_t i = 0; i < length_str.size(); ++i)
+    {
+        if (!std::isdigit(length_str[i]))
+            return true;
+    }
 
-    while (start < headers.size() && headers[start] == ' ')
-        start++;
-
-    size_t end = headers.find("\r\n", start);
-    if (end == std::string::npos)
-        return false;
-
-    std::string length_str = headers.substr(start, end - start);
-    if (length_str.empty())
-        return false;
-
-    _contentLength = std::atoi(length_str.c_str());
+    _contentLength = static_cast<size_t>(std::atoi(length_str.c_str()));
+    if (_contentLength > MAX_BODY_SIZE)
+    {
+        setError(413);
+        return true;
+    }
 
     size_t body_start = pos + 4;
     size_t body_size = _request.size() - body_start;
@@ -112,6 +149,7 @@ ssize_t Client::sendData()
     }
 
     _bytesSent += sent;
+    touch();
 
     return sent;
 }
@@ -119,6 +157,53 @@ ssize_t Client::sendData()
 bool Client::responseComplete() const
 {
     return _bytesSent >= _responseBuffer.size();
+}
+
+void Client::setRequestBuffer(const std::string &buffer)
+{
+    _request = buffer;
+}
+
+bool Client::hasBufferedData() const
+{
+    return !_request.empty();
+}
+
+void Client::setError(int statusCode)
+{
+    _hasError = true;
+    _errorCode = statusCode;
+    _isComplete = true;
+}
+
+bool Client::hasError() const
+{
+    return _hasError;
+}
+
+int Client::getErrorCode() const
+{
+    return _errorCode;
+}
+
+void Client::setCloseAfterResponse(bool shouldClose)
+{
+    _closeAfterResponse = shouldClose;
+}
+
+bool Client::shouldCloseAfterResponse() const
+{
+    return _closeAfterResponse;
+}
+
+void Client::touch()
+{
+    _lastActive = std::time(NULL);
+}
+
+bool Client::isIdle(time_t now, int timeoutSec) const
+{
+    return (timeoutSec > 0) && (now - _lastActive >= timeoutSec);
 }
 
 void Client::reset()
@@ -129,6 +214,21 @@ void Client::reset()
     _isComplete = false;
     _contentLength = 0;
     _bytesSent = 0;
+    _hasError = false;
+    _errorCode = 0;
+    _closeAfterResponse = false;
+}
+
+void Client::resetForNextRequest(const std::string &remaining)
+{
+    _request = remaining;
+    _responseBuffer.clear();
+    _isComplete = false;
+    _contentLength = 0;
+    _bytesSent = 0;
+    _hasError = false;
+    _errorCode = 0;
+    _closeAfterResponse = false;
 }
 
 int Client::getFd() const

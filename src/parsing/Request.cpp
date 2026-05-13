@@ -8,8 +8,12 @@ Request::Request()
 {
     _state = START_LINE;
     _contentLength = 0;
+    _hasContentLength = false;
+    _hasTransferEncoding = false;
+    _hasHost = false;
     _errorStatus.clear();
     _shouldClose = true;
+    _queryString.clear();
 }
 
 Request::~Request() {}
@@ -19,10 +23,14 @@ void Request::reset()
     _state = START_LINE;
     _method.clear();
     _path.clear();
+    _queryString.clear();
     _version.clear();
     _headers.clear();
     _body.clear();
     _contentLength = 0;
+    _hasContentLength = false;
+    _hasTransferEncoding = false;
+    _hasHost = false;
     _errorStatus.clear();
     _shouldClose = true;
 }
@@ -54,9 +62,18 @@ std::string Request::getConnectionHeader() const
 
 std::string Request::getMethod() const { return _method; }
 std::string Request::getPath() const { return _path; }
+std::string Request::getQueryString() const { return _queryString; }
 std::string Request::getVersion() const { return _version; }
 std::string Request::getBody() const { return _body; }
 const std::map<std::string, std::string>& Request::getHeaders() const { return _headers; }
+std::string Request::getHeader(const std::string& key) const
+{
+    std::string normalized = Utils::toLower(key);
+    std::map<std::string, std::string>::const_iterator it = _headers.find(normalized);
+    if (it == _headers.end())
+        return "";
+    return it->second;
+}
 
 bool Request::parse(std::string &buffer)
 {
@@ -110,9 +127,29 @@ bool Request::parseStartLine(std::string &line)
 {
     std::istringstream ss(line);
 
-    ss >> _method >> _path >> _version;
+    std::string rawPath;
+    ss >> _method >> rawPath >> _version;
 
-    if (_method.empty() || _path.empty() || _version.empty())
+    std::string extra;
+    if (ss >> extra)
+        return false;
+
+    if (_method.empty() || rawPath.empty() || _version.empty())
+        return false;
+
+    size_t queryPos = rawPath.find('?');
+    if (queryPos == std::string::npos)
+    {
+        _path = rawPath;
+        _queryString.clear();
+    }
+    else
+    {
+        _path = rawPath.substr(0, queryPos);
+        _queryString = rawPath.substr(queryPos + 1);
+    }
+
+    if (_path.empty())
         return false;
 
     if (!Utils::isValidMethod(_method))
@@ -148,7 +185,7 @@ bool Request::parseHeaders(std::string &buffer)
 
         if (line.empty())
         {
-            if (_headers.find("content-length") != _headers.end())
+            if (_hasContentLength)
             {
                 std::string cl = _headers["content-length"];
                 if (!Utils::isNumeric(cl))
@@ -176,9 +213,12 @@ bool Request::parseHeaders(std::string &buffer)
 
                 _contentLength = static_cast<size_t>(len);
             }
-            else
+
+            if (_method == "POST" && !_hasContentLength)
             {
-                _contentLength = 0;
+                _errorStatus = "411 Length Required";
+                _state = ERROR;
+                return false;
             }
 
             if (_version == "HTTP/1.1" && _headers.find("host") == _headers.end())
@@ -217,6 +257,40 @@ bool Request::parseHeaders(std::string &buffer)
             _errorStatus = "400 Bad Request";
             _state = ERROR;
             return false;
+        }
+
+        if (key == "host")
+        {
+            if (_hasHost)
+            {
+                _errorStatus = "400 Bad Request";
+                _state = ERROR;
+                return false;
+            }
+            _hasHost = true;
+        }
+
+        if (key == "content-length")
+        {
+            if (_hasContentLength)
+            {
+                _errorStatus = "400 Bad Request";
+                _state = ERROR;
+                return false;
+            }
+            _hasContentLength = true;
+        }
+
+        if (key == "transfer-encoding")
+        {
+            _hasTransferEncoding = true;
+            std::string val = Utils::toLower(value);
+            if (val != "identity")
+            {
+                _errorStatus = "501 Not Implemented";
+                _state = ERROR;
+                return false;
+            }
         }
 
         _headers[key] = value;
