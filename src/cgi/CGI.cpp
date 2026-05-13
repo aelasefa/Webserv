@@ -1,5 +1,6 @@
 #include "../../includes/CGI.hpp"
 
+#include <cstdio>
 #include <sstream>
 
 CGI::CGI() {}
@@ -59,6 +60,7 @@ std::string CGI::execute(const Request& request) {
             NULL
         };
         execve(_interpreter.c_str(), argv, &envp[0]);
+        std::perror("execve");
         _exit(1);
     } else {
         close(inputPipe[0]);

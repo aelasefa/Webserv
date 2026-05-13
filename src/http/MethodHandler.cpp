@@ -8,6 +8,8 @@
 
 namespace
 {
+    const char *kDefaultCgiInterpreter = "/usr/bin/python3";
+
     bool startsWith(const std::string &value, const std::string &prefix)
     {
         return value.compare(0, prefix.size(), prefix) == 0;
@@ -152,7 +154,7 @@ Response MethodHandler::handleGet(const Request &req)
     if (isCgiRequest(req, scriptPath))
     {
         CGI cgi;
-        cgi.setInterpreter("/usr/bin/python3");
+        cgi.setInterpreter(kDefaultCgiInterpreter);
         cgi.setScriptPath(scriptPath);
         std::string output = cgi.execute(req);
         return buildCgiResponse(output, req.getConnectionHeader());
@@ -167,7 +169,7 @@ Response MethodHandler::handlePost(const Request &req)
     if (isCgiRequest(req, scriptPath))
     {
         CGI cgi;
-        cgi.setInterpreter("/usr/bin/python3");
+        cgi.setInterpreter(kDefaultCgiInterpreter);
         cgi.setScriptPath(scriptPath);
         std::string output = cgi.execute(req);
         return buildCgiResponse(output, req.getConnectionHeader());
