@@ -1,18 +1,18 @@
-#include "../../includes/Cgi.hpp"
+#include "../../includes/CGI.hpp"
 
-Cgi::Cgi() {}
+CGI::CGI() {}
 
-Cgi::~Cgi() {}
+CGI::~CGI() {}
 
-void Cgi::setScriptPath(const std::string& path) {
+void CGI::setScriptPath(const std::string& path) {
     _scriptPath = path;
 }
 
-void Cgi::setInterpreter(const std::string& interpreter) {
+void CGI::setInterpreter(const std::string& interpreter) {
     _interpreter = interpreter;
 }
 
-std::vector<std::string> Cgi::setEnv(const Request& request) {
+std::vector<std::string> CGI::setEnv(const Request& request) {
     std::vector<std::string> env;
     env.push_back("REQUEST_METHOD=" + request.getMethod());
     env.push_back("QUERY_STRING=" + request.getQueryString());
@@ -26,7 +26,7 @@ std::vector<std::string> Cgi::setEnv(const Request& request) {
     return env;
 }
 
-std::string Cgi::execute(const Request& request) {
+std::string CGI::execute(const Request& request) {
     if (_interpreter.empty() || _scriptPath.empty())
         throw std::runtime_error("interpreter or script path not set");
     int inputPipe[2];

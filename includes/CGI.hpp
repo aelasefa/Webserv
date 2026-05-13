@@ -9,14 +9,14 @@
 #include <stdexcept>
 #include "Response.hpp"
 
-class Cgi
+class CGI
 {
 	private:
 		std::string _scriptPath;
 		std::string _interpreter;
 	public:
-		Cgi();
-		~Cgi();
+		CGI();
+		~CGI();
 
 		void setScriptPath(const std::string& path);
 		void setInterpreter(const std::string& interpreter);
@@ -24,7 +24,7 @@ class Cgi
 		std::string execute(const Request& request);
 };
 
-class CgiHandler {
+class CGIHandler {
 	public:
 		static Response buildResponse(const std::string& cgiOutput);
 };
