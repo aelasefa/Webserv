@@ -1,20 +1,12 @@
 #include "../../includes/Response.hpp"
 #include <sstream>
 
-static std::string intToString(size_t value)
+std::string intToString(size_t value)
 {
     std::ostringstream oss;
     oss << value;
     return oss.str();
 }
-
-static std::string intToString(int value)
-{
-    std::ostringstream oss;
-    oss << value;
-    return oss.str();
-}
-
 
 Response::Response() : statusCode(200),
         statusMessage("OK"), body("") {}
