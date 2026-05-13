@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include "Request.hpp"
 
 class Response {
     private:

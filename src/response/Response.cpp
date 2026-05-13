@@ -20,8 +20,13 @@ Response::Response() : statusCode(200),
         statusMessage("OK"), body("") {}
 
 void Response::setStatus(int status) {
+    if (status < 100 || status > 599) {
+        statusCode = 500;
+        statusMessage = "Internal Server Error";
+        return;
+    }
     statusCode = status;
-    switch (status) {
+    switch (statusCode) {
         case 200:
             statusMessage = "OK";
             break;
@@ -89,8 +94,11 @@ std::string Response::build() const {
     result += " ";
     result += statusMessage;
     result += "\r\n";
-    std::map<std::string, std::string> tempHeaders = headers;
-    tempHeaders["Content-Length"] = intToString(body.size());
+    std::map<std::string, std::string> tempHeaders(headers);
+    if (tempHeaders.find("Content-Type") == tempHeaders.end())
+        tempHeaders["Content-Type"] = "text/plain";
+    if (tempHeaders.find("Content-Length") == tempHeaders.end())
+        tempHeaders["Content-Length"] = intToString(body.size());
     for (std::map<std::string, std::string>::const_iterator it = tempHeaders.begin();
         it != tempHeaders.end(); ++it)
     {
