@@ -134,7 +134,16 @@ void Webserv::handleNewConnection(int server_fd)
         return;
 
     addClientToPoll(client_fd);
-    _clients.insert(std::make_pair(client_fd, Client(client_fd)));
+    size_t serverIndex = 0;
+    for (size_t i = 0; i < _server_fds.size(); i++)
+    {
+        if (_server_fds[i] == server_fd)
+        {
+            serverIndex = i;
+            break;
+        }
+    }
+    _clients.insert(std::make_pair(client_fd, Client(client_fd, serverIndex)));
 
     std::cout << "[CONNECT] fd=" << client_fd << std::endl;
 }
@@ -164,7 +173,9 @@ bool Webserv::processClientRequest(Client &client, pollfd &pfd)
 
     client.setRequestBuffer(raw);
 
-    Response res = MethodHandler::handle(req);
+    const size_t index = client.getServerIndex();
+    const Server &server = (index < _servers.size()) ? _servers[index] : _servers[0];
+    Response res = MethodHandler::handle(req, server);
     client.setResponse(res.build());
     client.setCloseAfterResponse(req.shouldClose());
     pfd.events = POLLOUT;

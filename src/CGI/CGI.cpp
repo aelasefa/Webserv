@@ -1,5 +1,14 @@
 #include "../../includes/CGI.hpp"
 
+#include <cstdlib>
+#include <sstream>
+
+static std::string sizeToString(size_t value) {
+    std::ostringstream oss;
+    oss << value;
+    return oss.str();
+}
+
 CGI::CGI() {}
 
 CGI::~CGI() {}
@@ -16,7 +25,7 @@ std::vector<std::string> CGI::setEnv(const Request& request) {
     std::vector<std::string> env;
     env.push_back("REQUEST_METHOD=" + request.getMethod());
     env.push_back("QUERY_STRING=" + request.getQueryString());
-    env.push_back("CONTENT_LENGTH=" + std::to_string(request.getBody().size()));
+    env.push_back("CONTENT_LENGTH=" + sizeToString(request.getBody().size()));
     env.push_back("CONTENT_TYPE=" + request.getHeader("Content-Type"));
     env.push_back("SCRIPT_NAME=" + _scriptPath);
     env.push_back("GATEWAY_INTERFACE=CGI/1.1");
@@ -72,4 +81,6 @@ std::string CGI::execute(const Request& request) {
         waitpid(pid, &status, 0);
         return result;
     }
+
+    return std::string();
 }

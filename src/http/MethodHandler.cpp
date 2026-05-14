@@ -121,7 +121,7 @@ namespace
     }
 }
 
-Response MethodHandler::handle(const Request &req)
+Response MethodHandler::handle(const Request &req, const Server &server)
 {
     if (req.hasError())
     {
@@ -132,13 +132,13 @@ Response MethodHandler::handle(const Request &req)
     }
 
     if (req.getMethod() == "GET")
-        return handleGet(req);
+        return handleGet(req, server);
 
     if (req.getMethod() == "POST")
-        return handlePost(req);
+        return handlePost(req, server);
 
     if (req.getMethod() == "DELETE")
-        return handleDelete(req);
+        return handleDelete(req, server);
 
     Response resp;
     resp.setStatus(405);
@@ -146,7 +146,7 @@ Response MethodHandler::handle(const Request &req)
     return resp;
 }
 
-Response MethodHandler::handleGet(const Request &req)
+Response MethodHandler::handleGet(const Request &req, const Server &server)
 {
     std::string scriptPath;
     if (isCgiRequest(req, scriptPath))
@@ -158,10 +158,10 @@ Response MethodHandler::handleGet(const Request &req)
         return buildCgiResponse(output, req.getConnectionHeader());
     }
 
-    return FileHandler::get(req.getPath(), req.getConnectionHeader());
+    return FileHandler::get(req.getPath(), req.getConnectionHeader(), server.root);
 }
 
-Response MethodHandler::handlePost(const Request &req)
+Response MethodHandler::handlePost(const Request &req, const Server &server)
 {
     std::string scriptPath;
     if (isCgiRequest(req, scriptPath))
@@ -173,10 +173,10 @@ Response MethodHandler::handlePost(const Request &req)
         return buildCgiResponse(output, req.getConnectionHeader());
     }
 
-    return FileHandler::post(req.getPath(), req.getBody(), req.getConnectionHeader());
+    return FileHandler::post(req.getPath(), req.getBody(), req.getConnectionHeader(), server.root);
 }
 
-Response MethodHandler::handleDelete(const Request &req)
+Response MethodHandler::handleDelete(const Request &req, const Server &server)
 {
-    return FileHandler::del(req.getPath(), req.getConnectionHeader());
+    return FileHandler::del(req.getPath(), req.getConnectionHeader(), server.root);
 }
