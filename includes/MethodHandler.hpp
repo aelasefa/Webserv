@@ -12,9 +12,9 @@ public:
     static Response handle(const Request &req, const Server &server);
 
 private:
-    static Response handleGet(const Request &req, const Server &server);
-    static Response handlePost(const Request &req, const Server &server);
-    static Response handleDelete(const Request &req, const Server &server);
+    static Response handleGet(const Request &req, const Server &server, const std::string &root, const std::string &path, const Location *loc);
+    static Response handlePost(const Request &req, const Server &server, const std::string &root, const std::string &path, const Location *loc);
+    static Response handleDelete(const Request &req, const Server &server, const std::string &root, const std::string &path, const Location *loc);
 };
 
 #endif
