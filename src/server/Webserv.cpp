@@ -3,6 +3,7 @@
 #include "../../includes/Request.hpp"
 #include "../../includes/Response.hpp"
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
@@ -15,6 +16,57 @@ namespace
 {
     const int POLL_TIMEOUT_MS = 1000;
     const int CLIENT_IDLE_TIMEOUT_SEC = 60;
+
+    void parseHostHeader(const std::string &hostHeader, std::string &host, int &port)
+    {
+        host.clear();
+        port = 0;
+
+        if (hostHeader.empty())
+            return;
+
+        std::string value = hostHeader;
+        size_t colon = value.find(':');
+        if (colon == std::string::npos)
+        {
+            host = value;
+            return;
+        }
+
+        host = value.substr(0, colon);
+        std::string portStr = value.substr(colon + 1);
+        if (!portStr.empty())
+            port = std::atoi(portStr.c_str());
+    }
+
+    const Server &selectServerByHost(const std::vector<Server> &servers, const Server &defaultServer, const std::string &hostHeader)
+    {
+        std::string host;
+        int port = 0;
+        parseHostHeader(hostHeader, host, port);
+
+        int effectivePort = (port > 0) ? port : defaultServer.listen;
+
+        for (size_t i = 0; i < servers.size(); i++)
+        {
+            if (servers[i].listen != effectivePort)
+                continue;
+
+            if (!servers[i].host.empty() && servers[i].host == host)
+                return servers[i];
+
+            if (!servers[i].server_name.empty() && servers[i].server_name == host)
+                return servers[i];
+        }
+
+        for (size_t i = 0; i < servers.size(); i++)
+        {
+            if (servers[i].listen == effectivePort)
+                return servers[i];
+        }
+
+        return defaultServer;
+    }
 
     int parseStatusCode(const std::string &status)
     {
@@ -134,7 +186,16 @@ void Webserv::handleNewConnection(int server_fd)
         return;
 
     addClientToPoll(client_fd);
-    _clients.insert(std::make_pair(client_fd, Client(client_fd)));
+    size_t serverIndex = 0;
+    for (size_t i = 0; i < _server_fds.size(); i++)
+    {
+        if (_server_fds[i] == server_fd)
+        {
+            serverIndex = i;
+            break;
+        }
+    }
+    _clients.insert(std::make_pair(client_fd, Client(client_fd, serverIndex)));
 
     std::cout << "[CONNECT] fd=" << client_fd << std::endl;
 }
@@ -164,7 +225,11 @@ bool Webserv::processClientRequest(Client &client, pollfd &pfd)
 
     client.setRequestBuffer(raw);
 
-    Response res = MethodHandler::handle(req);
+    const size_t index = client.getServerIndex();
+    const Server &defaultServer = (index < _servers.size()) ? _servers[index] : _servers[0];
+    std::string hostHeader = req.getHeader("Host");
+    const Server &server = selectServerByHost(_servers, defaultServer, hostHeader);
+    Response res = MethodHandler::handle(req, server);
     client.setResponse(res.build());
     client.setCloseAfterResponse(req.shouldClose());
     pfd.events = POLLOUT;

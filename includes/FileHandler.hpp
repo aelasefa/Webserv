@@ -7,9 +7,9 @@
 class FileHandler
 {
 public:
-    static Response get(const std::string &path, const std::string &connection);
-    static Response post(const std::string &path, const std::string &body, const std::string &connection);
-    static Response del(const std::string &path, const std::string &connection);
+    static Response get(const std::string &path, const std::string &connection, const std::string &docRoot);
+    static Response post(const std::string &path, const std::string &body, const std::string &connection, const std::string &docRoot);
+    static Response del(const std::string &path, const std::string &connection, const std::string &docRoot);
 
 private:
     static Response buildResponse(int status,

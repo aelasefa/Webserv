@@ -13,6 +13,7 @@ class Client
 {
 private:
     int _fd;
+    size_t _serverIndex;
 
     std::string _request;
     bool _isComplete;
@@ -27,7 +28,7 @@ private:
     time_t _lastActive;
 
 public:
-    Client(int fd);
+    Client(int fd, size_t serverIndex);
     ~Client();
 
     bool readData();
@@ -56,6 +57,7 @@ public:
     void resetForNextRequest(const std::string &remaining);
 
     int getFd() const;
+    size_t getServerIndex() const;
     const std::string &getRequest() const;
     size_t getBytesSent() const;
     size_t getResponseSize() const;

@@ -8,8 +8,9 @@
 
 #define BUFFER_SIZE 4096
 
-Client::Client(int fd)
+Client::Client(int fd, size_t serverIndex)
         : _fd(fd),
+            _serverIndex(serverIndex),
             _request(""),
             _isComplete(false),
             _contentLength(0),
@@ -234,6 +235,11 @@ void Client::resetForNextRequest(const std::string &remaining)
 int Client::getFd() const
 {
     return _fd;
+}
+
+size_t Client::getServerIndex() const
+{
+    return _serverIndex;
 }
 
 const std::string &Client::getRequest() const

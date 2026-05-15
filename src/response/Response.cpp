@@ -20,8 +20,13 @@ Response::Response() : statusCode(200),
         statusMessage("OK"), body("") {}
 
 void Response::setStatus(int status) {
+    if (status < 100 || status > 599) {
+        statusCode = 500;
+        statusMessage = "Internal Server Error";
+        return;
+    }
     statusCode = status;
-    switch (status) {
+    switch (statusCode) {
         case 200:
             statusMessage = "OK";
             break;
@@ -69,6 +74,19 @@ void Response::setBody(const std::string& content) {
     body = content;
 }
 
+std::string getContentType(const std::string& path)
+{
+    if (path.find(".html") != std::string::npos)
+        return "text/html";
+    if (path.find(".css") != std::string::npos)
+        return "text/css";
+    if (path.find(".js") != std::string::npos)
+        return "application/javascript";
+    if (path.find(".png") != std::string::npos)
+        return "image/png";
+    return "text/plain";
+}
+
 std::string Response::build() const {
     std::string result;
     result += "HTTP/1.1 ";
@@ -76,8 +94,11 @@ std::string Response::build() const {
     result += " ";
     result += statusMessage;
     result += "\r\n";
-    std::map<std::string, std::string> tempHeaders = headers;
-    tempHeaders["Content-Length"] = intToString(body.size());
+    std::map<std::string, std::string> tempHeaders(headers);
+    if (tempHeaders.find("Content-Type") == tempHeaders.end())
+        tempHeaders["Content-Type"] = "text/plain";
+    if (tempHeaders.find("Content-Length") == tempHeaders.end())
+        tempHeaders["Content-Length"] = intToString(body.size());
     for (std::map<std::string, std::string>::const_iterator it = tempHeaders.begin();
         it != tempHeaders.end(); ++it)
     {
