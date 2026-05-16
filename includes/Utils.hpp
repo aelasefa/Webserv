@@ -9,7 +9,7 @@ class Utils
 public:
     static std::string trim(const std::string &str);
     static std::vector<std::string> split(const std::string &str, char delimiter);
-
+    std::string toString(int n);
     static bool isValidMethod(const std::string &method);
     static bool isValidHttpVersion(const std::string &version);
 
