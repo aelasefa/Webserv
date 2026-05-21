@@ -41,6 +41,7 @@ public:
     void setResponse(const std::string &response);
     ssize_t sendData();
     bool responseComplete() const;
+    bool hasResponse() const;
 
     void setRequestBuffer(const std::string &buffer);
     bool hasBufferedData() const;

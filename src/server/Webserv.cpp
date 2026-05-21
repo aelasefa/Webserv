@@ -155,7 +155,7 @@ void Webserv::addClientToPoll(int fd)
 
     pollfd pfd;
     pfd.fd = fd;
-    pfd.events = POLLIN;
+    pfd.events = POLLIN | POLLOUT;
     pfd.revents = 0;
 
     _poll_fds.push_back(pfd);
@@ -216,13 +216,13 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
         res.setBody("413 Payload Too Large");
         client.setResponse(res.build());
         client.setCloseAfterResponse(true);
-        pfd.events = POLLOUT;
+        pfd.events = POLLIN | POLLOUT;
         return true;
     }
     Response res = Router::routeRequest(server, req);
     client.setResponse(res.build());
     client.setCloseAfterResponse(req.shouldClose());
-    pfd.events = POLLOUT;
+    pfd.events = POLLIN | POLLOUT;
     return true;
 }
 
@@ -251,7 +251,7 @@ void Webserv::handleClientRead(size_t index)
         res.setBody("Request too large");
         client.setResponse(res.build());
         client.setCloseAfterResponse(true);
-        _poll_fds[index].events = POLLOUT;
+        _poll_fds[index].events = POLLIN | POLLOUT;
         return;
     }
 
@@ -276,7 +276,7 @@ void Webserv::handleClientRead(size_t index)
         res.setBody(req.getErrorStatus());
         client.setResponse(res.build());
         client.setCloseAfterResponse(true);
-        _poll_fds[index].events = POLLOUT;
+        _poll_fds[index].events = POLLIN | POLLOUT;
         return;
     }
 
@@ -296,6 +296,9 @@ void Webserv::handleClientWrite(size_t index)
     }
 
     Client &client = it->second;
+
+    if (!client.hasResponse())
+        return;
 
     if (client.sendData() < 0)
     {
@@ -335,17 +338,17 @@ void Webserv::handleClientWrite(size_t index)
                     res.setBody(req.getErrorStatus());
                     client.setResponse(res.build());
                     client.setCloseAfterResponse(true);
-                    _poll_fds[index].events = POLLOUT;
+                    _poll_fds[index].events = POLLIN | POLLOUT;
                 }
                 else
                 {
-                    _poll_fds[index].events = POLLIN;
+                    _poll_fds[index].events = POLLIN | POLLOUT;
                 }
             }
         }
         else
         {
-            _poll_fds[index].events = POLLIN;
+            _poll_fds[index].events = POLLIN | POLLOUT;
         }
     }
 }
@@ -415,7 +418,7 @@ void Webserv::startLoop()
                     handleClientRead(i);
                 }
             }
-            else if (_poll_fds[i].revents & POLLOUT)
+            if (_poll_fds[i].revents & POLLOUT)
             {
                 handleClientWrite(i);
             }

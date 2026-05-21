@@ -1,7 +1,6 @@
 #include "../../includes/Client.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
-#include <cerrno>
 
 #define BUFFER_SIZE 4096
 
@@ -31,11 +30,7 @@ bool Client::readData()
 
     ssize_t bytes = recv(_fd, buffer, BUFFER_SIZE, 0);
     if (bytes < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return true;
         return false;
-    }
     if (bytes == 0)
         return false;
 
@@ -83,11 +78,7 @@ ssize_t Client::sendData()
                         0);
 
     if (sent < 0)
-    {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return 0;
         return -1;
-    }
 
     _bytesSent += sent;
     touch();
@@ -98,6 +89,11 @@ ssize_t Client::sendData()
 bool Client::responseComplete() const
 {
     return _bytesSent >= _responseBuffer.size();
+}
+
+bool Client::hasResponse() const
+{
+    return !_responseBuffer.empty();
 }
 
 void Client::setRequestBuffer(const std::string &buffer)
