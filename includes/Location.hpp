@@ -23,6 +23,14 @@ public:
 
     std::vector<std::string> cgi_path;
     std::vector<std::string> cgi_ext;
+
+    bool upload_enable;
+    bool upload_enable_set;
+    std::string upload_path;
+    bool upload_path_set;
+
+    int client_max_body_size;
+    bool client_max_body_size_set;
 };
 
 

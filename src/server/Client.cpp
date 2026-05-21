@@ -1,10 +1,7 @@
 #include "../../includes/Client.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
-#include <cstdlib>
 #include <cerrno>
-#include <cctype>
-#include <sstream>
 
 #define BUFFER_SIZE 4096
 
@@ -14,6 +11,8 @@ Client::Client(int fd, size_t serverIndex)
             _request(""),
             _isComplete(false),
             _contentLength(0),
+            _parser(),
+            _maxBodySize(MAX_BODY_SIZE),
             _responseBuffer(""),
             _bytesSent(0),
             _hasError(false),
@@ -64,66 +63,7 @@ bool Client::checkRequestComplete()
     if (_hasError)
         return true;
 
-    size_t pos = _request.find("\r\n\r\n");
-    if (pos == std::string::npos)
-        return false;
-
-    std::string headers = _request.substr(0, pos);
-    std::string length_str;
-
-    std::istringstream lines(headers);
-    std::string line;
-    while (std::getline(lines, line))
-    {
-        if (!line.empty() && line[line.size() - 1] == '\r')
-            line.erase(line.size() - 1);
-
-        size_t sep = line.find(':');
-        if (sep == std::string::npos)
-            continue;
-
-        std::string key = line.substr(0, sep);
-        for (size_t i = 0; i < key.size(); ++i)
-            key[i] = std::tolower(key[i]);
-
-        if (key == "content-length")
-        {
-            length_str = line.substr(sep + 1);
-            while (!length_str.empty() && length_str[0] == ' ')
-                length_str.erase(0, 1);
-            break;
-        }
-    }
-
-    if (length_str.empty())
-    {
-        _isComplete = true;
-        return true;
-    }
-
-    for (size_t i = 0; i < length_str.size(); ++i)
-    {
-        if (!std::isdigit(length_str[i]))
-            return true;
-    }
-
-    _contentLength = static_cast<size_t>(std::atoi(length_str.c_str()));
-    if (_contentLength > MAX_BODY_SIZE)
-    {
-        setError(413);
-        return true;
-    }
-
-    size_t body_start = pos + 4;
-    size_t body_size = _request.size() - body_start;
-
-    if (body_size >= _contentLength)
-    {
-        _isComplete = true;
-        return true;
-    }
-
-    return false;
+    return _request.find("\r\n\r\n") != std::string::npos;
 }
 
 void Client::setResponse(const std::string &response)
@@ -168,6 +108,27 @@ void Client::setRequestBuffer(const std::string &buffer)
 bool Client::hasBufferedData() const
 {
     return !_request.empty();
+}
+
+std::string &Client::getRequestBuffer()
+{
+    return _request;
+}
+
+Request &Client::getParser()
+{
+    return _parser;
+}
+
+void Client::setMaxBodySize(size_t maxBodySize)
+{
+    _maxBodySize = (maxBodySize == 0) ? MAX_BODY_SIZE : maxBodySize;
+    _parser.setMaxBodySize(_maxBodySize);
+}
+
+size_t Client::getMaxBodySize() const
+{
+    return _maxBodySize;
 }
 
 void Client::setError(int statusCode)
@@ -218,6 +179,8 @@ void Client::reset()
     _hasError = false;
     _errorCode = 0;
     _closeAfterResponse = false;
+    _parser.reset();
+    _parser.setMaxBodySize(_maxBodySize);
 }
 
 void Client::resetForNextRequest(const std::string &remaining)
@@ -230,6 +193,8 @@ void Client::resetForNextRequest(const std::string &remaining)
     _hasError = false;
     _errorCode = 0;
     _closeAfterResponse = false;
+    _parser.reset();
+    _parser.setMaxBodySize(_maxBodySize);
 }
 
 int Client::getFd() const

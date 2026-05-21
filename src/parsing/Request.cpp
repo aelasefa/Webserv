@@ -11,9 +11,13 @@ Request::Request()
     _hasContentLength = false;
     _hasTransferEncoding = false;
     _hasHost = false;
+    _isChunked = false;
+    _currentChunkSize = 0;
+    _chunkBytesRead = 0;
     _errorStatus.clear();
     _shouldClose = true;
     _queryString.clear();
+    _maxBodySize = MAX_BODY_SIZE;
 }
 
 Request::~Request() {}
@@ -31,8 +35,44 @@ void Request::reset()
     _hasContentLength = false;
     _hasTransferEncoding = false;
     _hasHost = false;
+    _isChunked = false;
+    _currentChunkSize = 0;
+    _chunkBytesRead = 0;
     _errorStatus.clear();
     _shouldClose = true;
+    _maxBodySize = MAX_BODY_SIZE;
+}
+
+namespace
+{
+    bool isHexDigit(char c)
+    {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    bool parseChunkSizeLine(const std::string &line, size_t &sizeOut)
+    {
+        std::string token = line;
+        size_t semi = token.find(';');
+        if (semi != std::string::npos)
+            token = token.substr(0, semi);
+        if (token.empty())
+            return false;
+
+        for (size_t i = 0; i < token.size(); i++)
+        {
+            if (!isHexDigit(token[i]))
+                return false;
+        }
+
+        errno = 0;
+        unsigned long value = std::strtoul(token.c_str(), 0, 16);
+        if (errno != 0)
+            return false;
+
+        sizeOut = static_cast<size_t>(value);
+        return true;
+    }
 }
 
 bool Request::isDone() const
@@ -58,6 +98,19 @@ bool Request::shouldClose() const
 std::string Request::getConnectionHeader() const
 {
     return _shouldClose ? "close" : "keep-alive";
+}
+
+void Request::setMaxBodySize(size_t maxBodySize)
+{
+    if (maxBodySize == 0)
+        _maxBodySize = MAX_BODY_SIZE;
+    else
+        _maxBodySize = maxBodySize;
+}
+
+size_t Request::getMaxBodySize() const
+{
+    return _maxBodySize;
 }
 
 std::string Request::getMethod() const { return _method; }
@@ -108,6 +161,12 @@ bool Request::parse(std::string &buffer)
         else if (_state == BODY)
         {
             if (!parseBody(buffer))
+                return false;
+        }
+
+        else if (_state == CHUNK_SIZE || _state == CHUNK_DATA || _state == CHUNK_DATA_CRLF || _state == CHUNK_TRAILER)
+        {
+            if (!parseChunkedBody(buffer))
                 return false;
         }
 
@@ -185,6 +244,19 @@ bool Request::parseHeaders(std::string &buffer)
 
         if (line.empty())
         {
+            if (_hasTransferEncoding && _isChunked)
+            {
+                _contentLength = 0;
+                _hasContentLength = false;
+            }
+
+            if (_hasContentLength && _isChunked)
+            {
+                _errorStatus = "400 Bad Request";
+                _state = ERROR;
+                return false;
+            }
+
             if (_hasContentLength)
             {
                 std::string cl = _headers["content-length"];
@@ -204,7 +276,7 @@ bool Request::parseHeaders(std::string &buffer)
                     return false;
                 }
 
-                if (len > MAX_BODY_SIZE)
+                if (len > _maxBodySize)
                 {
                     _errorStatus = "413 Payload Too Large";
                     _state = ERROR;
@@ -214,7 +286,7 @@ bool Request::parseHeaders(std::string &buffer)
                 _contentLength = static_cast<size_t>(len);
             }
 
-            if (_method == "POST" && !_hasContentLength)
+            if (_method == "POST" && !_hasContentLength && !_isChunked)
             {
                 _errorStatus = "411 Length Required";
                 _state = ERROR;
@@ -237,7 +309,10 @@ bool Request::parseHeaders(std::string &buffer)
                     _shouldClose = false;
             }
 
-            _state = BODY;
+            if (_isChunked)
+                _state = CHUNK_SIZE;
+            else
+                _state = BODY;
             return true;
         }
 
@@ -285,12 +360,26 @@ bool Request::parseHeaders(std::string &buffer)
         {
             _hasTransferEncoding = true;
             std::string val = Utils::toLower(value);
-            if (val != "identity")
+            std::vector<std::string> tokens = Utils::split(val, ',');
+            bool hasChunked = false;
+
+            for (size_t i = 0; i < tokens.size(); i++)
             {
+                std::string token = Utils::trim(tokens[i]);
+                if (token.empty() || token == "identity")
+                    continue;
+                if (token == "chunked")
+                {
+                    hasChunked = true;
+                    continue;
+                }
+
                 _errorStatus = "501 Not Implemented";
                 _state = ERROR;
                 return false;
             }
+
+            _isChunked = hasChunked;
         }
 
         _headers[key] = value;
@@ -299,7 +388,10 @@ bool Request::parseHeaders(std::string &buffer)
 
 bool Request::parseBody(std::string &buffer)
 {
-    if (_contentLength > MAX_BODY_SIZE)
+    if (_isChunked)
+        return parseChunkedBody(buffer);
+
+    if (_contentLength > _maxBodySize)
     {
         _errorStatus = "413 Payload Too Large";
         _state = ERROR;
@@ -320,4 +412,101 @@ bool Request::parseBody(std::string &buffer)
 
     _state = DONE;
     return true;
+}
+
+bool Request::parseChunkedBody(std::string &buffer)
+{
+    while (true)
+    {
+        if (_state == CHUNK_SIZE)
+        {
+            size_t pos = buffer.find("\r\n");
+            if (pos == std::string::npos)
+                return false;
+
+            std::string line = buffer.substr(0, pos);
+            buffer.erase(0, pos + 2);
+
+            size_t chunkSize = 0;
+            if (!parseChunkSizeLine(line, chunkSize))
+            {
+                _errorStatus = "400 Bad Request";
+                _state = ERROR;
+                return false;
+            }
+
+            _currentChunkSize = chunkSize;
+            _chunkBytesRead = 0;
+
+            if (_currentChunkSize == 0)
+            {
+                _state = CHUNK_TRAILER;
+            }
+            else
+            {
+                _state = CHUNK_DATA;
+            }
+        }
+        else if (_state == CHUNK_DATA)
+        {
+            size_t remaining = _currentChunkSize - _chunkBytesRead;
+            if (buffer.size() < remaining)
+            {
+                if (_body.size() + buffer.size() > _maxBodySize)
+                {
+                    _errorStatus = "413 Payload Too Large";
+                    _state = ERROR;
+                    return false;
+                }
+                _body.append(buffer);
+                _chunkBytesRead += buffer.size();
+                buffer.clear();
+                return false;
+            }
+
+            if (_body.size() + remaining > _maxBodySize)
+            {
+                _errorStatus = "413 Payload Too Large";
+                _state = ERROR;
+                return false;
+            }
+
+            _body.append(buffer.substr(0, remaining));
+            buffer.erase(0, remaining);
+            _chunkBytesRead += remaining;
+            _state = CHUNK_DATA_CRLF;
+        }
+        else if (_state == CHUNK_DATA_CRLF)
+        {
+            if (buffer.size() < 2)
+                return false;
+            if (buffer[0] != '\r' || buffer[1] != '\n')
+            {
+                _errorStatus = "400 Bad Request";
+                _state = ERROR;
+                return false;
+            }
+            buffer.erase(0, 2);
+            _state = CHUNK_SIZE;
+        }
+        else if (_state == CHUNK_TRAILER)
+        {
+            size_t pos = buffer.find("\r\n");
+            if (pos == std::string::npos)
+                return false;
+
+            std::string line = buffer.substr(0, pos);
+            buffer.erase(0, pos + 2);
+
+            if (line.empty())
+            {
+                _state = DONE;
+                return true;
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
 }

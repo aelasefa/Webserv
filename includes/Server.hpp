@@ -18,6 +18,9 @@ public:
 
     int client_max_body_size;
 
+    bool upload_enable;
+    std::string upload_path;
+
     std::map<int, std::string> error_pages;
 
     std::vector<Location> locations;
