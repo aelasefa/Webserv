@@ -14,6 +14,10 @@ public:
         START_LINE,
         HEADERS,
         BODY,
+        CHUNK_SIZE,
+        CHUNK_DATA,
+        CHUNK_DATA_CRLF,
+        CHUNK_TRAILER,
         DONE,
         ERROR
     };
@@ -33,8 +37,12 @@ private:
     bool _hasContentLength;
     bool _hasTransferEncoding;
     bool _hasHost;
+    bool _isChunked;
+    size_t _currentChunkSize;
+    size_t _chunkBytesRead;
     std::string _errorStatus;
     bool _shouldClose;
+    size_t _maxBodySize;
 
 public:
     Request();
@@ -45,6 +53,7 @@ public:
     bool parseStartLine(std::string &line);
     bool parseHeaders(std::string &buffer);
     bool parseBody(std::string &buffer);
+    bool parseChunkedBody(std::string &buffer);
 
     bool isDone() const;
     bool hasError() const;
@@ -53,6 +62,8 @@ public:
     std::string getErrorStatus() const;
     bool shouldClose() const;
     std::string getConnectionHeader() const;
+    void setMaxBodySize(size_t maxBodySize);
+    size_t getMaxBodySize() const;
 
     std::string getMethod() const;
     std::string getPath() const;

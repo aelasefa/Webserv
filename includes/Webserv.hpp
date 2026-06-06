@@ -23,7 +23,7 @@ private:
     void handleNewConnection(int server_fd);
     void handleClientRead(size_t index);
     void handleClientWrite(size_t index);
-    bool processClientRequest(Client &client, pollfd &pfd);
+    bool processClientRequest(Client &client, Request &req, pollfd &pfd);
     bool isServerFd(int fd) const;
 
 public:

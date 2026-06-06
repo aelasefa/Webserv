@@ -1,12 +1,160 @@
 
-#include "../includes/Router.hpp"
-#include "../includes/Utils.hpp"
-#include "../includes/CGI.hpp"
+#include "../../includes/Router.hpp"
+#include "../../includes/Utils.hpp"
+#include "../../includes/CGI.hpp"
+#include "../../includes/FileHandler.hpp"
 #include <sys/stat.h>
 #include <dirent.h>
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+
+namespace
+{
+    std::string stripQueryAndFragment(const std::string &path)
+    {
+        std::string cleaned = path;
+        size_t q = cleaned.find('?');
+        if (q != std::string::npos)
+            cleaned.erase(q);
+        size_t h = cleaned.find('#');
+        if (h != std::string::npos)
+            cleaned.erase(h);
+        if (cleaned.empty())
+            cleaned = "/";
+        return cleaned;
+    }
+
+    std::string baseName(const std::string &path)
+    {
+        size_t pos = path.find_last_of('/');
+        if (pos == std::string::npos)
+            return path;
+        if (pos + 1 >= path.size())
+            return "";
+        return path.substr(pos + 1);
+    }
+
+    std::string extractBoundary(const std::string &contentType)
+    {
+        std::string lower = Utils::toLower(contentType);
+        size_t formPos = lower.find("multipart/form-data");
+        if (formPos == std::string::npos)
+            return "";
+
+        size_t boundaryPos = lower.find("boundary=", formPos);
+        if (boundaryPos == std::string::npos)
+            return "";
+
+        std::string boundary = contentType.substr(boundaryPos + 9);
+        size_t semi = boundary.find(';');
+        if (semi != std::string::npos)
+            boundary = boundary.substr(0, semi);
+        boundary = Utils::trim(boundary);
+        if (boundary.size() >= 2 && boundary[0] == '"' && boundary[boundary.size() - 1] == '"')
+            boundary = boundary.substr(1, boundary.size() - 2);
+        return boundary;
+    }
+
+    std::string sanitizeFilename(const std::string &name)
+    {
+        std::string cleaned = name;
+        size_t slash = cleaned.find_last_of("/\\");
+        if (slash != std::string::npos)
+            cleaned = cleaned.substr(slash + 1);
+        if (cleaned == "." || cleaned == "..")
+            return "";
+        if (cleaned.find("..") != std::string::npos)
+            return "";
+        return cleaned;
+    }
+
+    std::string extractFilenameFromHeaders(const std::string &headers)
+    {
+        std::istringstream iss(headers);
+        std::string line;
+        while (std::getline(iss, line))
+        {
+            if (!line.empty() && line[line.size() - 1] == '\r')
+                line.erase(line.size() - 1);
+
+            size_t sep = line.find(':');
+            if (sep == std::string::npos)
+                continue;
+
+            std::string key = Utils::toLower(Utils::trim(line.substr(0, sep)));
+            std::string value = Utils::trim(line.substr(sep + 1));
+
+            if (key != "content-disposition")
+                continue;
+
+            std::string lowerValue = Utils::toLower(value);
+            size_t fnPos = lowerValue.find("filename=");
+            if (fnPos == std::string::npos)
+                return "";
+
+            std::string filename = value.substr(fnPos + 9);
+            size_t semi = filename.find(';');
+            if (semi != std::string::npos)
+                filename = filename.substr(0, semi);
+            filename = Utils::trim(filename);
+            if (filename.size() >= 2 && filename[0] == '"' && filename[filename.size() - 1] == '"')
+                filename = filename.substr(1, filename.size() - 2);
+
+            return filename;
+        }
+
+        return "";
+    }
+
+    bool extractMultipartFiles(const std::string &body, const std::string &boundary,
+                               std::vector<std::string> &filenames,
+                               std::vector<std::string> &contents)
+    {
+        std::string marker = "--" + boundary;
+        size_t pos = body.find(marker);
+        if (pos == std::string::npos)
+            return false;
+
+        pos += marker.size();
+        if (body.compare(pos, 2, "--") == 0)
+            return true;
+        if (body.compare(pos, 2, "\r\n") != 0)
+            return false;
+        pos += 2;
+
+        while (true)
+        {
+            size_t headersEnd = body.find("\r\n\r\n", pos);
+            if (headersEnd == std::string::npos)
+                return false;
+
+            std::string headers = body.substr(pos, headersEnd - pos);
+            std::string filename = extractFilenameFromHeaders(headers);
+            pos = headersEnd + 4;
+
+            size_t nextBoundary = body.find("\r\n" + marker, pos);
+            if (nextBoundary == std::string::npos)
+                return false;
+
+            std::string partData = body.substr(pos, nextBoundary - pos);
+            if (!filename.empty())
+            {
+                filenames.push_back(filename);
+                contents.push_back(partData);
+            }
+
+            pos = nextBoundary + 2 + marker.size();
+            if (body.compare(pos, 2, "--") == 0)
+                break;
+            if (body.compare(pos, 2, "\r\n") != 0)
+                return false;
+            pos += 2;
+        }
+
+        return true;
+    }
+}
 
 Response Router::serveError(int code)
 {
@@ -42,7 +190,7 @@ Response Router::serveStaticFile(const std::string& path)
     return response;
 }
 
-Response Router::serveCgi(Server& server, Location& location, Request& request, const std::string& script_path)
+Response Router::serveCgi(const Location& location, const Request& request, const std::string& script_path)
 {
     Response response;
     std::string ext = getExtension(script_path);
@@ -97,7 +245,7 @@ Response Router::serveCgi(Server& server, Location& location, Request& request, 
     return response;
 }
 
-std::string Router::buildPath(Server& server, Location& location, const std::string& request_path)
+std::string Router::buildPath(const Server& server, const Location& location, const std::string& request_path)
 {
     std::string root = location.root.empty() ? server.root : location.root;
     std::string cleaned_path = request_path;
@@ -220,17 +368,14 @@ std::string Router::generateDirectoryListing(const std::string& full_path, const
     return html;
 }
 
-Response Router::routeRequest(Server& server, Request& request)
+Response Router::routeRequest(const Server& server, Request& request)
 {
-    Location* matched_location = NULL;
+    const Location* matched_location = NULL;
     size_t best_match = 0;
-    std::string request_path = request.getPath();
-    size_t q = request_path.find('?');
-    if (q != std::string::npos)
-        request_path = request_path.substr(0, q);
+    std::string request_path = stripQueryAndFragment(request.getPath());
     for (size_t i = 0; i < server.locations.size(); i++)
     {
-        Location& loc = server.locations[i];
+        const Location& loc = server.locations[i];
         std::string loc_path = loc.path;
         bool is_exact = false;
         bool is_prefix = true;
@@ -257,39 +402,105 @@ Response Router::routeRequest(Server& server, Request& request)
             }
         }
     }
-    if (!matched_location)
-    {
-        return serveError(404);
-    }
-    Location& location = *matched_location;
-    if (!isMethodAllowed(request.getMethod(), location.methods))
-    {
+    const Location* location = matched_location;
+    int effectiveBodyLimit = server.client_max_body_size;
+    if (location && location->client_max_body_size_set)
+        effectiveBodyLimit = location->client_max_body_size;
+    if (effectiveBodyLimit > 0 && request.getBody().size() > static_cast<size_t>(effectiveBodyLimit))
+        return serveError(413);
+
+    if (location && !isMethodAllowed(request.getMethod(), location->methods))
         return serveError(405);
-    }
-    if (!location.redirect.empty())
+
+    if (location && !location->redirect.empty())
+        return serveRedirect(location->redirect_code, location->redirect);
+
+    if (request.getMethod() == "POST")
     {
-        return serveRedirect(location.redirect_code, location.redirect);
+        bool uploadEnabled = server.upload_enable;
+        std::string uploadPath = server.upload_path;
+        if (location && location->upload_enable_set)
+            uploadEnabled = location->upload_enable;
+        if (location && location->upload_path_set)
+            uploadPath = location->upload_path;
+
+        if (location)
+        {
+            std::string full_path = buildPath(server, *location, request_path);
+            std::string ext = getExtension(full_path);
+            if (isCgiExtension(ext, location->cgi_ext))
+            {
+                if (!fileExists(full_path))
+                    return serveError(404);
+                return serveCgi(*location, request, full_path);
+            }
+        }
+
+        if (!uploadEnabled)
+            return serveError(403);
+        if (uploadPath.empty())
+            return serveError(403);
+
+        std::string contentType = request.getHeader("Content-Type");
+        std::string boundary = extractBoundary(contentType);
+        if (!boundary.empty())
+        {
+            std::vector<std::string> filenames;
+            std::vector<std::string> contents;
+            if (!extractMultipartFiles(request.getBody(), boundary, filenames, contents))
+                return serveError(400);
+
+            if (filenames.empty())
+                return serveError(400);
+
+            for (size_t i = 0; i < filenames.size(); i++)
+            {
+                std::string cleaned = sanitizeFilename(filenames[i]);
+                if (cleaned.empty())
+                    return serveError(403);
+
+                Response res = FileHandler::post("/" + cleaned, contents[i], request.getConnectionHeader(), uploadPath);
+                if (res.getStatusCode() >= 400)
+                    return res;
+            }
+
+            Response resp;
+            resp.setStatus(201);
+            resp.setHeader("Content-Type", "text/plain");
+            resp.setHeader("Connection", request.getConnectionHeader());
+            resp.setBody("Uploaded");
+            return resp;
+        }
+
+        std::string filename = sanitizeFilename(baseName(request_path));
+        if (filename.empty())
+            return serveError(403);
+
+        return FileHandler::post("/" + filename, request.getBody(), request.getConnectionHeader(), uploadPath);
     }
-    std::string full_path = buildPath(server, location, request_path);
-    if (!fileExists(full_path))
-    {
+
+    if (!location)
         return serveError(404);
-    }
+
+    std::string full_path = buildPath(server, *location, request_path);
+    if (!fileExists(full_path))
+        return serveError(404);
+
     if (isDirectory(full_path))
     {
-        if (!location.index.empty())
+        if (!location->index.empty())
         {
             std::string index_path = full_path;
             if (!index_path.empty() && index_path[index_path.size() - 1] != '/')
                 index_path += "/";
-            index_path += location.index;
+            index_path += location->index;
             if (fileExists(index_path))
             {
                 full_path = index_path;
             }
             else
             {
-                if (location.autoindex == "on")
+                if (location->autoindex == "on")
                 {
                     Response response;
                     response.setStatus(200);
@@ -302,7 +513,7 @@ Response Router::routeRequest(Server& server, Request& request)
         }
         else
         {
-            if (location.autoindex == "on")
+            if (location->autoindex == "on")
             {
                 Response response;
                 response.setStatus(200);
@@ -313,10 +524,10 @@ Response Router::routeRequest(Server& server, Request& request)
             return serveError(403);
         }
     }
+
     std::string ext = getExtension(full_path);
-    if (isCgiExtension(ext, location.cgi_ext))
-    {
-        return serveCgi(server, location, request, full_path);
-    }
+    if (isCgiExtension(ext, location->cgi_ext))
+        return serveCgi(*location, request, full_path);
+
     return serveStaticFile(full_path);
 }

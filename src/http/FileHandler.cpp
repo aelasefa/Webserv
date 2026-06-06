@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstdio>
+#include <fcntl.h>
 
 namespace
 {
@@ -58,6 +59,33 @@ namespace
             return DEFAULT_DOC_ROOT;
         return docRoot;
     }
+
+    bool writeAll(int fd, const std::string &body)
+    {
+        size_t total = 0;
+        while (total < body.size())
+        {
+            ssize_t written = write(fd, body.data() + total, body.size() - total);
+            if (written <= 0)
+                return false;
+            total += static_cast<size_t>(written);
+        }
+        return true;
+    }
+
+    bool createTempFile(const std::string &targetPath, std::string &tempPath, int &fd)
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            std::ostringstream oss;
+            oss << targetPath << ".tmp." << getpid() << "." << i;
+            tempPath = oss.str();
+            fd = open(tempPath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+            if (fd >= 0)
+                return true;
+        }
+        return false;
+    }
 }
 
 Response FileHandler::buildResponse(int status,
@@ -104,14 +132,30 @@ Response FileHandler::post(const std::string &path, const std::string &body, con
     const std::string root = resolveDocRoot(docRoot);
     std::string fullPath = root + normalized;
 
-    std::ofstream file(fullPath.c_str(), std::ios::out | std::ios::binary);
-    if (!file.is_open())
+    if (access(fullPath.c_str(), F_OK) == 0)
+        return buildResponse(403, "File exists", "text/plain", connection);
+
+    std::string tempPath;
+    int tempFd = -1;
+    if (!createTempFile(fullPath, tempPath, tempFd))
+        return buildResponse(500, "Cannot create temp file", "text/plain", connection);
+
+    bool wrote = writeAll(tempFd, body);
+    close(tempFd);
+
+    if (!wrote)
+    {
+        std::remove(tempPath.c_str());
         return buildResponse(500, "Cannot write file", "text/plain", connection);
+    }
 
-    file << body;
-    file.close();
+    if (std::rename(tempPath.c_str(), fullPath.c_str()) != 0)
+    {
+        std::remove(tempPath.c_str());
+        return buildResponse(500, "Cannot finalize file", "text/plain", connection);
+    }
 
-    return buildResponse(201, "File created/updated", "text/plain", connection);
+    return buildResponse(201, "File created", "text/plain", connection);
 }
 
 Response FileHandler::del(const std::string &path, const std::string &connection, const std::string &docRoot)

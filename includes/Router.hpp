@@ -11,10 +11,10 @@
 class Router
 {
 public:
-    static Response routeRequest(Server& server, Request& request);
+    static Response routeRequest(const Server& server, Request& request);
 
 private:
-    static std::string buildPath(Server& server, Location& location, const std::string& request_path);
+    static std::string buildPath(const Server& server, const Location& location, const std::string& request_path);
     static bool fileExists(const std::string& path);
     static bool isDirectory(const std::string& path);
     static std::string getExtension(const std::string& path);
@@ -27,7 +27,7 @@ private:
     static Response serveStaticFile(const std::string& path);
     static Response serveRedirect(int code, const std::string& location);
     static Response serveError(int code);
-    static Response serveCgi(Server& server, Location& location, Request& request, const std::string& script_path);
+    static Response serveCgi(const Location& location, const Request& request, const std::string& script_path);
 };
 
 #endif

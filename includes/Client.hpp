@@ -18,6 +18,8 @@ private:
     std::string _request;
     bool _isComplete;
     size_t _contentLength;
+    Request _parser;
+    size_t _maxBodySize;
 
     std::string _responseBuffer;
     size_t _bytesSent;
@@ -39,9 +41,14 @@ public:
     void setResponse(const std::string &response);
     ssize_t sendData();
     bool responseComplete() const;
+    bool hasResponse() const;
 
     void setRequestBuffer(const std::string &buffer);
     bool hasBufferedData() const;
+    std::string &getRequestBuffer();
+    Request &getParser();
+    void setMaxBodySize(size_t maxBodySize);
+    size_t getMaxBodySize() const;
 
     void setError(int statusCode);
     bool hasError() const;
