@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include "Request.hpp"
 #include "Response.hpp"
+#include <sstream>
+#include <cstdlib>
 
 class CGI
 {

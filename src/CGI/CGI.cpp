@@ -35,8 +35,13 @@ std::string CGI::execute(const Request& request) {
         throw std::runtime_error("pipe failed");
         
     pid_t pid = fork();
-    if (pid < 0)
+    if (pid < 0) {
+        close(inputPipe[0]);
+        close(inputPipe[1]);
+        close(outputPipe[0]);
+        close(outputPipe[1]);
         throw std::runtime_error("fork failed");
+    }
     std::vector<std::string> envStrings = setEnv(request);
     std::vector<char *> envp;
     for (size_t i = 0; i < envStrings.size(); i++)
@@ -70,11 +75,70 @@ std::string CGI::execute(const Request& request) {
         close(outputPipe[0]);
         int status;
         waitpid(pid, &status, 0);
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+            throw std::runtime_error("CGI execution failed");
         return result;
     }
 }
 
-Response CGIHandler::buildResponse(const std::string& cgiOutput) {
+Response CGIHandler::buildResponse(const std::string& cgiOutput)
+{
     Response res;
-    std::
+
+    res.setStatus(200);
+
+    size_t pos = cgiOutput.find("\r\n\r\n");
+    size_t separatorLen = 4;
+
+    if (pos == std::string::npos)
+    {
+        pos = cgiOutput.find("\n\n");
+        separatorLen = 2;
+    }
+
+    std::string headersPart;
+    std::string bodyPart;
+
+    if (pos != std::string::npos)
+    {
+        headersPart = cgiOutput.substr(0, pos);
+        bodyPart = cgiOutput.substr(pos + separatorLen);
+    }
+    else
+        bodyPart = cgiOutput;
+
+    std::stringstream ss(headersPart);
+    std::string line;
+
+    while (std::getline(ss, line))
+    {
+        if (!line.empty() && line[line.size() - 1] == '\r')
+            line.erase(line.size() - 1);
+
+        size_t colon = line.find(':');
+        if (colon == std::string::npos)
+            continue;
+
+        std::string key = line.substr(0, colon);
+        std::string value = line.substr(colon + 1);
+
+        while (!value.empty() && value[0] == ' ')
+            value.erase(0, 1);
+
+        if (key == "Status")
+        {
+            int status = atoi(value.c_str());
+            res.setStatus(status);
+        }
+        else
+            res.setHeader(key, value);
+    }
+
+    if (headersPart.empty())
+        res.setHeader("Content-Type", "text/html");
+
+    res.setBody(bodyPart);
+    res.setHeader("Content-Length", intToString(bodyPart.size()));
+
+    return res;
 }
