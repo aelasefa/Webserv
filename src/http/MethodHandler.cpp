@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <sstream>
 #include <cstdlib>
-
+#include <iostream>
 namespace
 {
     bool startsWith(const std::string &value, const std::string &prefix)
@@ -23,18 +23,16 @@ namespace
 
     bool isCgiRequest(const Request &req, std::string &scriptPath)
     {
-        std::string cleanPath = stripQuery(req.getPath());
-        if (!startsWith(cleanPath, "/cgi-bin/"))
+        std::string path = stripQuery(req.getPath());
+        std::string prefix = "/cgi-bin/";
+        if (!startsWith(path, prefix))
             return false;
 
-        std::string localPath = cleanPath.substr(std::string("/cgi-bin").size());
-        if (localPath.empty())
-            return false;
+        std::string file = path.substr(prefix.size());
+        scriptPath = "./www/cgi-bin/" + file;
 
-        scriptPath = std::string("./cgi") + localPath;
         if (access(scriptPath.c_str(), F_OK) != 0)
             return false;
-
         return true;
     }
 
