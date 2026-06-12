@@ -1,5 +1,14 @@
 #include "../../includes/CGI.hpp"
 
+#include <cstdlib>
+#include <sstream>
+
+static std::string sizeToString(size_t value) {
+    std::ostringstream oss;
+    oss << value;
+    return oss.str();
+}
+
 CGI::CGI() {}
 
 CGI::~CGI() {}
@@ -79,6 +88,7 @@ std::string CGI::execute(const Request& request) {
             throw std::runtime_error("CGI execution failed");
         return result;
     }
+<<<<<<< HEAD
 }
 
 Response CGIHandler::buildResponse(const std::string& cgiOutput)
@@ -141,4 +151,8 @@ Response CGIHandler::buildResponse(const std::string& cgiOutput)
     res.setHeader("Content-Length", intToString(bodyPart.size()));
 
     return res;
+=======
+
+    return std::string();
+>>>>>>> main
 }

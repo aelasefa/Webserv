@@ -4,10 +4,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstdio>
+#include <fcntl.h>
 
 namespace
 {
-    const char *DOC_ROOT = "./www";
+    const char *DEFAULT_DOC_ROOT = "./website";
 
     bool containsDotDot(const std::string &path)
     {
@@ -52,6 +53,39 @@ namespace
         normalized = path;
         return true;
     }
+    std::string resolveDocRoot(const std::string &docRoot)
+    {
+        if (docRoot.empty())
+            return DEFAULT_DOC_ROOT;
+        return docRoot;
+    }
+
+    bool writeAll(int fd, const std::string &body)
+    {
+        size_t total = 0;
+        while (total < body.size())
+        {
+            ssize_t written = write(fd, body.data() + total, body.size() - total);
+            if (written <= 0)
+                return false;
+            total += static_cast<size_t>(written);
+        }
+        return true;
+    }
+
+    bool createTempFile(const std::string &targetPath, std::string &tempPath, int &fd)
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            std::ostringstream oss;
+            oss << targetPath << ".tmp." << getpid() << "." << i;
+            tempPath = oss.str();
+            fd = open(tempPath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+            if (fd >= 0)
+                return true;
+        }
+        return false;
+    }
 }
 
 Response FileHandler::buildResponse(int status,
@@ -67,7 +101,7 @@ Response FileHandler::buildResponse(int status,
     return resp;
 }
 
-Response FileHandler::get(const std::string &path, const std::string &connection)
+Response FileHandler::get(const std::string &path, const std::string &connection, const std::string &docRoot)
 {
     std::string normalized;
     if (!normalizePath(path, normalized))
@@ -76,7 +110,8 @@ Response FileHandler::get(const std::string &path, const std::string &connection
     if (!normalized.empty() && normalized[normalized.size() - 1] == '/')
         normalized += "index.html";
 
-    std::string fullPath = std::string(DOC_ROOT) + normalized;
+    const std::string root = resolveDocRoot(docRoot);
+    std::string fullPath = root + normalized;
 
     std::ifstream file(fullPath.c_str(), std::ios::in | std::ios::binary);
     if (!file.is_open())
@@ -88,31 +123,49 @@ Response FileHandler::get(const std::string &path, const std::string &connection
     return buildResponse(200, buffer.str(), "text/html", connection);
 }
 
-Response FileHandler::post(const std::string &path, const std::string &body, const std::string &connection)
+Response FileHandler::post(const std::string &path, const std::string &body, const std::string &connection, const std::string &docRoot)
 {
     std::string normalized;
     if (!normalizePath(path, normalized))
         return buildResponse(403, "Forbidden", "text/plain", connection);
 
-    std::string fullPath = std::string(DOC_ROOT) + normalized;
+    const std::string root = resolveDocRoot(docRoot);
+    std::string fullPath = root + normalized;
 
-    std::ofstream file(fullPath.c_str(), std::ios::out | std::ios::binary);
-    if (!file.is_open())
+    if (access(fullPath.c_str(), F_OK) == 0)
+        return buildResponse(403, "File exists", "text/plain", connection);
+
+    std::string tempPath;
+    int tempFd = -1;
+    if (!createTempFile(fullPath, tempPath, tempFd))
+        return buildResponse(500, "Cannot create temp file", "text/plain", connection);
+
+    bool wrote = writeAll(tempFd, body);
+    close(tempFd);
+
+    if (!wrote)
+    {
+        std::remove(tempPath.c_str());
         return buildResponse(500, "Cannot write file", "text/plain", connection);
+    }
 
-    file << body;
-    file.close();
+    if (std::rename(tempPath.c_str(), fullPath.c_str()) != 0)
+    {
+        std::remove(tempPath.c_str());
+        return buildResponse(500, "Cannot finalize file", "text/plain", connection);
+    }
 
-    return buildResponse(201, "File created/updated", "text/plain", connection);
+    return buildResponse(201, "File created", "text/plain", connection);
 }
 
-Response FileHandler::del(const std::string &path, const std::string &connection)
+Response FileHandler::del(const std::string &path, const std::string &connection, const std::string &docRoot)
 {
     std::string normalized;
     if (!normalizePath(path, normalized))
         return buildResponse(403, "Forbidden", "text/plain", connection);
 
-    std::string fullPath = std::string(DOC_ROOT) + normalized;
+    const std::string root = resolveDocRoot(docRoot);
+    std::string fullPath = root + normalized;
 
     if (access(fullPath.c_str(), F_OK) != 0)
         return buildResponse(404, "File not found", "text/plain", connection);

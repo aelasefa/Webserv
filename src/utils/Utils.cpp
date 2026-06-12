@@ -18,6 +18,13 @@ std::string Utils::trim(const std::string &str)
     return str.substr(start, end - start);
 }
 
+std::string Utils::toString(int n)
+{
+    std::ostringstream oss;
+    oss << n;
+    return oss.str();
+}
+
 std::vector<std::string> Utils::split(const std::string &str, char delimiter)
 {
     std::vector<std::string> result;

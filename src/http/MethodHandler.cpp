@@ -21,7 +21,7 @@ namespace
         return path.substr(0, pos);
     }
 
-    bool isCgiRequest(const Request &req, std::string &scriptPath)
+    std::string trim(const std::string &value)
     {
         std::string path = stripQuery(req.getPath());
         std::string prefix = "/cgi-bin/";
@@ -31,6 +31,194 @@ namespace
         std::string file = path.substr(prefix.size());
         scriptPath = "./www/cgi-bin/" + file;
 
+        size_t start = 0;
+        size_t end = value.size();
+
+        while (start < end && (value[start] == ' ' || value[start] == '\t'))
+            start++;
+
+        while (end > start && (value[end - 1] == ' ' || value[end - 1] == '\t'))
+            end--;
+
+        return value.substr(start, end - start);
+    }
+
+    std::string locationPathToken(const std::string &raw, bool &isExact)
+    {
+        isExact = false;
+        std::string cleaned = trim(raw);
+        if (cleaned.empty())
+            return "/";
+
+        std::string first;
+        std::string second;
+        std::istringstream iss(cleaned);
+        iss >> first;
+        if (iss >> second)
+        {
+            if (first == "=")
+            {
+                isExact = true;
+                return second;
+            }
+            if (first == "^~" || first == "~" || first == "~*")
+                return second;
+        }
+
+        return first;
+    }
+
+    const Location *selectLocation(const Server &server, const std::string &reqPath)
+    {
+        const Location *best = NULL;
+        size_t bestLen = 0;
+
+        for (size_t i = 0; i < server.locations.size(); i++)
+        {
+            bool isExact = false;
+            std::string locPath = locationPathToken(server.locations[i].path, isExact);
+
+            if (locPath.empty())
+                locPath = "/";
+
+            if (isExact)
+            {
+                if (reqPath == locPath)
+                    return &server.locations[i];
+                continue;
+            }
+
+            if (startsWith(reqPath, locPath))
+            {
+                if (locPath.size() > bestLen)
+                {
+                    bestLen = locPath.size();
+                    best = &server.locations[i];
+                }
+            }
+        }
+
+        return best;
+    }
+
+    std::string joinMethods(const std::vector<std::string> &methods)
+    {
+        std::string result;
+        for (size_t i = 0; i < methods.size(); i++)
+        {
+            if (i > 0)
+                result += ", ";
+            result += methods[i];
+        }
+        return result;
+    }
+
+    bool isMethodAllowed(const Location *loc, const std::string &method, std::string &allowHeader)
+    {
+        if (!loc || loc->methods.empty())
+            return true;
+
+        for (size_t i = 0; i < loc->methods.size(); i++)
+        {
+            if (loc->methods[i] == method)
+                return true;
+        }
+
+        allowHeader = joinMethods(loc->methods);
+        return false;
+    }
+
+    void applyIndexIfNeeded(std::string &path, const std::string &index)
+    {
+        if (index.empty())
+            return;
+        if (!path.empty() && path[path.size() - 1] == '/')
+            path += index;
+    }
+
+    void resolveRoute(const Server &server, const std::string &reqPath, std::string &root, std::string &path, const Location *&loc)
+    {
+        root = server.root;
+        path = reqPath;
+        loc = selectLocation(server, reqPath);
+
+        if (!loc)
+        {
+            applyIndexIfNeeded(path, server.index);
+            return;
+        }
+
+        if (!loc->root.empty())
+        {
+            root = loc->root;
+            bool isExact = false;
+            std::string locPath = locationPathToken(loc->path, isExact);
+            if (!locPath.empty() && startsWith(reqPath, locPath))
+            {
+                std::string suffix = reqPath.substr(locPath.size());
+                if (suffix.empty())
+                    suffix = "/";
+                if (!suffix.empty() && suffix[0] != '/')
+                    suffix = "/" + suffix;
+                path = suffix;
+            }
+        }
+
+        if (!loc->alias.empty())
+        {
+            bool isExact = false;
+            std::string locPath = locationPathToken(loc->path, isExact);
+            if (!locPath.empty() && startsWith(reqPath, locPath))
+            {
+                std::string suffix = reqPath.substr(locPath.size());
+                if (suffix.empty())
+                    suffix = "/";
+                if (!suffix.empty() && suffix[0] != '/')
+                    suffix = "/" + suffix;
+                path = suffix;
+            }
+            root = loc->alias;
+        }
+
+        applyIndexIfNeeded(path, loc->index.empty() ? server.index : loc->index);
+    }
+
+    std::string pathExtension(const std::string &path)
+    {
+        size_t dot = path.rfind('.');
+        if (dot == std::string::npos)
+            return "";
+        return path.substr(dot);
+    }
+
+    bool resolveCgi(const Location *loc, const std::string &root, const std::string &path, std::string &interpreter, std::string &scriptPath)
+    {
+        if (!loc || loc->cgi_ext.empty())
+            return false;
+
+        std::string ext = pathExtension(path);
+        if (ext.empty())
+            return false;
+
+        int extIndex = -1;
+        for (size_t i = 0; i < loc->cgi_ext.size(); i++)
+        {
+            if (loc->cgi_ext[i] == ext)
+            {
+                extIndex = static_cast<int>(i);
+                break;
+            }
+        }
+
+        if (extIndex < 0)
+            return false;
+
+        if (loc->cgi_path.size() == loc->cgi_ext.size())
+            interpreter = loc->cgi_path[extIndex];
+        else if (!loc->cgi_path.empty())
+            interpreter = loc->cgi_path[0];
+
+        scriptPath = root + path;
         if (access(scriptPath.c_str(), F_OK) != 0)
             return false;
         return true;
@@ -119,7 +307,7 @@ namespace
     }
 }
 
-Response MethodHandler::handle(const Request &req)
+Response MethodHandler::handle(const Request &req, const Server &server)
 {
     if (req.hasError())
     {
@@ -129,14 +317,46 @@ Response MethodHandler::handle(const Request &req)
         return resp;
     }
 
+    if (req.getBody().size() > static_cast<size_t>(server.client_max_body_size))
+    {
+        Response resp;
+        resp.setStatus(413);
+        resp.setHeader("Connection", req.getConnectionHeader());
+        return resp;
+    }
+
+    std::string root;
+    std::string path = stripQuery(req.getPath());
+    const Location *loc = NULL;
+    resolveRoute(server, path, root, path, loc);
+
+    if (loc && !loc->redirect.empty())
+    {
+        Response resp;
+        resp.setStatus(loc->redirect_code);
+        resp.setHeader("Location", loc->redirect);
+        resp.setHeader("Connection", req.getConnectionHeader());
+        return resp;
+    }
+
+    std::string allowHeader;
+    if (!isMethodAllowed(loc, req.getMethod(), allowHeader))
+    {
+        Response resp;
+        resp.setStatus(405);
+        resp.setHeader("Allow", allowHeader);
+        resp.setHeader("Connection", req.getConnectionHeader());
+        return resp;
+    }
+
     if (req.getMethod() == "GET")
-        return handleGet(req);
+        return handleGet(req, server, root, path, loc);
 
     if (req.getMethod() == "POST")
-        return handlePost(req);
+        return handlePost(req, server, root, path, loc);
 
     if (req.getMethod() == "DELETE")
-        return handleDelete(req);
+        return handleDelete(req, server, root, path, loc);
 
     Response resp;
     resp.setStatus(405);
@@ -144,37 +364,61 @@ Response MethodHandler::handle(const Request &req)
     return resp;
 }
 
-Response MethodHandler::handleGet(const Request &req)
+Response MethodHandler::handleGet(const Request &req, const Server &server, const std::string &root, const std::string &path, const Location *loc)
 {
+    (void)server;
+    std::string interpreter;
     std::string scriptPath;
-    if (isCgiRequest(req, scriptPath))
+    if (resolveCgi(loc, root, path, interpreter, scriptPath))
     {
+        if (interpreter.empty())
+        {
+            Response resp;
+            resp.setStatus(500);
+            resp.setHeader("Connection", req.getConnectionHeader());
+            resp.setBody("CGI interpreter not configured");
+            return resp;
+        }
+
         CGI cgi;
-        cgi.setInterpreter("/usr/bin/python3");
+        cgi.setInterpreter(interpreter);
         cgi.setScriptPath(scriptPath);
         std::string output = cgi.execute(req);
         return buildCgiResponse(output, req.getConnectionHeader());
     }
 
-    return FileHandler::get(req.getPath(), req.getConnectionHeader());
+    return FileHandler::get(path, req.getConnectionHeader(), root.empty() ? server.root : root);
 }
 
-Response MethodHandler::handlePost(const Request &req)
+Response MethodHandler::handlePost(const Request &req, const Server &server, const std::string &root, const std::string &path, const Location *loc)
 {
+    (void)server;
+    std::string interpreter;
     std::string scriptPath;
-    if (isCgiRequest(req, scriptPath))
+    if (resolveCgi(loc, root, path, interpreter, scriptPath))
     {
+        if (interpreter.empty())
+        {
+            Response resp;
+            resp.setStatus(500);
+            resp.setHeader("Connection", req.getConnectionHeader());
+            resp.setBody("CGI interpreter not configured");
+            return resp;
+        }
+
         CGI cgi;
-        cgi.setInterpreter("/usr/bin/python3");
+        cgi.setInterpreter(interpreter);
         cgi.setScriptPath(scriptPath);
         std::string output = cgi.execute(req);
         return buildCgiResponse(output, req.getConnectionHeader());
     }
 
-    return FileHandler::post(req.getPath(), req.getBody(), req.getConnectionHeader());
+    return FileHandler::post(path, req.getBody(), req.getConnectionHeader(), root.empty() ? server.root : root);
 }
 
-Response MethodHandler::handleDelete(const Request &req)
+Response MethodHandler::handleDelete(const Request &req, const Server &server, const std::string &root, const std::string &path, const Location *loc)
 {
-    return FileHandler::del(req.getPath(), req.getConnectionHeader());
+    (void)server;
+    (void)loc;
+    return FileHandler::del(path, req.getConnectionHeader(), root.empty() ? server.root : root);
 }

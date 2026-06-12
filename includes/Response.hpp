@@ -14,6 +14,7 @@ class Response {
     public:
         Response();
         void setStatus(int status);
+        int getStatusCode() const;
         void setHeader(const std::string& key, const std::string& value);
         void setBody(const std::string& content);
         std::string build() const;

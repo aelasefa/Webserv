@@ -22,6 +22,27 @@ void Response::setStatus(int status) {
         case 200:
             statusMessage = "OK";
             break;
+        case 201:
+            statusMessage = "Created";
+            break;
+        case 204:
+            statusMessage = "No Content";
+            break;
+        case 301:
+            statusMessage = "Moved Permanently";
+            break;
+        case 302:
+            statusMessage = "Found";
+            break;
+        case 303:
+            statusMessage = "See Other";
+            break;
+        case 307:
+            statusMessage = "Temporary Redirect";
+            break;
+        case 308:
+            statusMessage = "Permanent Redirect";
+            break;
         case 400:
             statusMessage = "Bad Request";
             break;
@@ -56,6 +77,10 @@ void Response::setStatus(int status) {
             statusMessage = "Unknown";
             break;
     }
+}
+
+int Response::getStatusCode() const {
+    return statusCode;
 }
 
 void Response::setHeader(const std::string& key, const std::string& value) {

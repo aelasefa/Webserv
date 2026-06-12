@@ -9,6 +9,12 @@ Location::Location() {
     redirect = "";
     redirect_code = 301;
     alias = "";
+    upload_enable = false;
+    upload_enable_set = false;
+    upload_path = "";
+    upload_path_set = false;
+    client_max_body_size = 0;
+    client_max_body_size_set = false;
 }
 
 static std::string trim(const std::string& s) {
@@ -55,6 +61,12 @@ void Location::reset() {
     methods.clear();
     cgi_path.clear();
     cgi_ext.clear();
+    upload_enable = false;
+    upload_enable_set = false;
+    upload_path = "";
+    upload_path_set = false;
+    client_max_body_size = 0;
+    client_max_body_size_set = false;
 }
 
 Server::Server() {
@@ -64,6 +76,8 @@ Server::Server() {
     server_name = "";
     index = "";
     client_max_body_size = 1048576;     
+    upload_enable = false;
+    upload_path = "";
 }
 
 void Server::reset() {
@@ -73,6 +87,8 @@ void Server::reset() {
     root = "";
     index = "";
     client_max_body_size = 1048576;
+    upload_enable = false;
+    upload_path = "";
     error_pages.clear();
     locations.clear();
 }
@@ -193,6 +209,29 @@ void ConfigParser::parse_location_directive(const std::string& key,
                 loc.cgi_ext.push_back(ext);
         }
     }
+    else if (key == "upload_enable") {
+        std::string value;
+        iss >> value;
+        value = strip_semicolon(value);
+        loc.upload_enable_set = true;
+        loc.upload_enable = (value == "on");
+    }
+    else if (key == "upload_path") {
+        std::string value;
+        iss >> value;
+        loc.upload_path = strip_semicolon(value);
+        loc.upload_path_set = true;
+    }
+    else if (key == "client_max_body_size") {
+        std::string value;
+        iss >> value;
+        value = strip_semicolon(value);
+        if (!value.empty() && is_number(value))
+        {
+            loc.client_max_body_size = std::atoi(value.c_str());
+            loc.client_max_body_size_set = true;
+        }
+    }
 }
 void ConfigParser::parse_server_directive(const std::string& key, 
                                           std::istringstream& iss, 
@@ -230,6 +269,17 @@ void ConfigParser::parse_server_directive(const std::string& key,
         value = strip_semicolon(value);
         if (!value.empty())
             srv.client_max_body_size = std::atoi(value.c_str());
+    }
+    else if (key == "upload_enable") {
+        std::string value;
+        iss >> value;
+        value = strip_semicolon(value);
+        srv.upload_enable = (value == "on");
+    }
+    else if (key == "upload_path") {
+        std::string value;
+        iss >> value;
+        srv.upload_path = strip_semicolon(value);
     }
     else if (key == "error_page") {
         std::vector<int> codes;
