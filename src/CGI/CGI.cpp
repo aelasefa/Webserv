@@ -3,11 +3,6 @@
 #include <cstdlib>
 #include <sstream>
 
-static std::string sizeToString(size_t value) {
-    std::ostringstream oss;
-    oss << value;
-    return oss.str();
-}
 
 CGI::CGI() {}
 
