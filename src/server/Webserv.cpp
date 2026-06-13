@@ -155,7 +155,7 @@ void Webserv::addClientToPoll(int fd)
 
     pollfd pfd;
     pfd.fd = fd;
-    pfd.events = POLLIN | POLLOUT;
+    pfd.events = POLLIN;
     pfd.revents = 0;
 
     _poll_fds.push_back(pfd);
@@ -341,11 +341,11 @@ void Webserv::handleClientWrite(size_t index)
                     res.setBody(req.getErrorStatus());
                     client.setResponse(res.build());
                     client.setCloseAfterResponse(true);
-                    _poll_fds[index].events = POLLIN | POLLOUT;
+                    _poll_fds[index].events = POLLIN;
                 }
                 else
                 {
-                    _poll_fds[index].events = POLLIN | POLLOUT;
+                    _poll_fds[index].events = POLLIN;
                 }
             }
         }
@@ -407,7 +407,15 @@ void Webserv::startLoop()
                 }
                 else
                 {
+                    int fd_before = _poll_fds[i].fd;
+
                     handleClientRead(i);
+
+                    if (i >= _poll_fds.size())
+                        continue;
+
+                    if (_poll_fds[i].fd != fd_before)
+                        continue;
                 }
             }
             if (_poll_fds[i].revents & POLLOUT)
