@@ -3,11 +3,11 @@
 #include <cstdlib>
 #include <sstream>
 
-// static std::string sizeToString(size_t value) {
-//     std::ostringstream oss;
-//     oss << value;
-//     return oss.str();
-// }
+static std::string sizeToString(size_t value) {
+    std::ostringstream oss;
+    oss << value;
+    return oss.str();
+}
 
 CGI::CGI() {}
 
@@ -88,6 +88,71 @@ std::string CGI::execute(const Request& request) {
             throw std::runtime_error("CGI execution failed");
         return result;
     }
+<<<<<<< HEAD
+}
+
+Response CGIHandler::buildResponse(const std::string& cgiOutput)
+{
+    Response res;
+
+    res.setStatus(200);
+
+    size_t pos = cgiOutput.find("\r\n\r\n");
+    size_t separatorLen = 4;
+
+    if (pos == std::string::npos)
+    {
+        pos = cgiOutput.find("\n\n");
+        separatorLen = 2;
+    }
+
+    std::string headersPart;
+    std::string bodyPart;
+
+    if (pos != std::string::npos)
+    {
+        headersPart = cgiOutput.substr(0, pos);
+        bodyPart = cgiOutput.substr(pos + separatorLen);
+    }
+    else
+        bodyPart = cgiOutput;
+
+    std::stringstream ss(headersPart);
+    std::string line;
+
+    while (std::getline(ss, line))
+    {
+        if (!line.empty() && line[line.size() - 1] == '\r')
+            line.erase(line.size() - 1);
+
+        size_t colon = line.find(':');
+        if (colon == std::string::npos)
+            continue;
+
+        std::string key = line.substr(0, colon);
+        std::string value = line.substr(colon + 1);
+
+        while (!value.empty() && value[0] == ' ')
+            value.erase(0, 1);
+
+        if (key == "Status")
+        {
+            int status = atoi(value.c_str());
+            res.setStatus(status);
+        }
+        else
+            res.setHeader(key, value);
+    }
+
+    if (headersPart.empty())
+        res.setHeader("Content-Type", "text/html");
+
+    res.setBody(bodyPart);
+    res.setHeader("Content-Length", intToString(bodyPart.size()));
+
+    return res;
+=======
 
     return std::string();
+>>>>>>> main
 }
