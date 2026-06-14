@@ -119,8 +119,30 @@ Response FileHandler::get(const std::string &path, const std::string &connection
 
     std::stringstream buffer;
     buffer << file.rdbuf();
+    std::string contentType = "application/octet-stream";
+    size_t dot = fullPath.find_last_of('.');
+    if (dot != std::string::npos)
+    {
+        std::string ext = fullPath.substr(dot);
+        if (ext == ".html" || ext == ".htm")
+            contentType = "text/html";
+        else if (ext == ".css")
+            contentType = "text/css";
+        else if (ext == ".js")
+            contentType = "application/javascript";
+        else if (ext == ".png")
+            contentType = "image/png";
+        else if (ext == ".jpg" || ext == ".jpeg")
+            contentType = "image/jpeg";
+        else if (ext == ".gif")
+            contentType = "image/gif";
+        else if (ext == ".txt")
+            contentType = "text/plain";
+        else if (ext == ".json")
+            contentType = "application/json";
+    }
 
-    return buildResponse(200, buffer.str(), "text/html", connection);
+    return buildResponse(200, buffer.str(), contentType, connection);
 }
 
 Response FileHandler::post(const std::string &path, const std::string &body, const std::string &connection, const std::string &docRoot)

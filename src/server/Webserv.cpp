@@ -156,7 +156,7 @@ void Webserv::addClientToPoll(int fd)
 
     pollfd pfd;
     pfd.fd = fd;
-    pfd.events = POLLIN | POLLOUT;
+    pfd.events = POLLIN;
     pfd.revents = 0;
 
     _poll_fds.push_back(pfd);
@@ -184,7 +184,10 @@ void Webserv::handleNewConnection(int server_fd)
 {
     int client_fd = accept(server_fd, NULL, NULL);
     if (client_fd < 0)
-        return;
+    {
+        perror("accept");
+        return ;
+    }
 
     addClientToPoll(client_fd);
     size_t serverIndex = 0;
@@ -396,11 +399,11 @@ void Webserv::handleClientWrite(size_t index)
                     res.setBody(req.getErrorStatus());
                     client.setResponse(res.build());
                     client.setCloseAfterResponse(true);
-                    _poll_fds[index].events = POLLIN | POLLOUT;
+                    _poll_fds[index].events = POLLIN;
                 }
                 else
                 {
-                    _poll_fds[index].events = POLLIN | POLLOUT;
+                    _poll_fds[index].events = POLLIN;
                 }
             }
         }
@@ -415,9 +418,6 @@ void Webserv::startLoop()
 {
     while (true)
     {
-        if (_poll_fds.empty())
-            break;
-
         int poll_ret = poll(&_poll_fds[0], _poll_fds.size(), POLL_TIMEOUT_MS);
         if (poll_ret < 0)
         {
@@ -439,24 +439,16 @@ void Webserv::startLoop()
             }
             i++;
         }
-
-        for (size_t i = 0; i < _poll_fds.size(); i++)
+        size_t size = _poll_fds.size();
+        for (size_t i = 0; i < size; i++)
         {
             if (_poll_fds[i].revents & (POLLHUP | POLLERR | POLLNVAL))
             {
                 if (isServerFd(_poll_fds[i].fd))
                 {
-                    close(_poll_fds[i].fd);
-                    for (size_t s = 0; s < _server_fds.size(); s++)
-                    {
-                        if (_server_fds[s] == _poll_fds[i].fd)
-                        {
-                            _server_fds.erase(_server_fds.begin() + s);
-                            break;
-                        }
-                    }
-                    _poll_fds.erase(_poll_fds.begin() + i);
-                    i--;
+
+                    std::cerr << "[WARNING] Server socket event error ignored fd="
+                              << _poll_fds[i].fd << std::endl;
                     continue;
                 }
 
@@ -473,7 +465,15 @@ void Webserv::startLoop()
                 }
                 else
                 {
+                    int fd_before = _poll_fds[i].fd;
+
                     handleClientRead(i);
+
+                    if (i >= _poll_fds.size())
+                        continue;
+
+                    if (_poll_fds[i].fd != fd_before)
+                        continue;
                 }
             }
             if (_poll_fds[i].revents & POLLOUT)

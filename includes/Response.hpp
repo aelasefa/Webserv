@@ -22,5 +22,7 @@ public:
     void setBody(const std::string &content);
     std::string build() const;
 };
+    
+std::string intToString(size_t value);
 
 #endif
