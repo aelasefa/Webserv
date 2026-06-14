@@ -9,7 +9,7 @@ std::string makeSetCookie(const std::string &key, const std::string &value)
     return key + "=" + value + "; Path=/";
 }
 
-static std::string intToString(int value)
+std::string intToString(size_t value)
 {
     std::ostringstream oss;
     oss << value;
