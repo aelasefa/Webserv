@@ -8,6 +8,7 @@
 #include <map>
 #include "Client.hpp"
 #include "Server.hpp"
+#include "SessionManager.hpp"
 
 class Webserv
 {
@@ -16,6 +17,7 @@ private:
     std::vector<pollfd> _poll_fds;
     std::vector<int> _server_fds;
     std::map<int, Client> _clients;
+    SessionManager _sessionManager;
 
     void addServerToPoll(int server_fd);
     void addClientToPoll(int fd);

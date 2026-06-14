@@ -2,6 +2,7 @@
 #include "../../includes/Router.hpp"
 #include "../../includes/Request.hpp"
 #include "../../includes/Response.hpp"
+#include "../../includes/Utils.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -206,6 +207,53 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
     const Server &defaultServer = (index < _servers.size()) ? _servers[index] : _servers[0];
     std::string hostHeader = req.getHeader("Host");
     const Server &server = selectServerByHost(_servers, defaultServer, hostHeader);
+    std::string cookieHeader = req.getHeader("Cookie");
+    
+
+    std::string sessionId = Request::getCookieValue(cookieHeader, "session_id");
+    std::string theme      = Request::getCookieValue(cookieHeader, "theme");
+    
+
+    bool newSession = false;
+    bool themeCookieNeeded = false;
+
+    if (sessionId.empty())
+    {
+        sessionId = "id_" + Utils::toString(std::time(NULL));
+        _sessionManager.create(sessionId, "light");
+        theme = "light";
+        newSession = true;
+        themeCookieNeeded = true;
+    }
+    else
+    {
+        if (!_sessionManager.exists(sessionId))
+        {
+            _sessionManager.create(sessionId, "light");
+            if (theme.empty())
+            {
+                theme = "light";
+                themeCookieNeeded = true;
+            }
+            newSession = true;
+        }
+        else
+        {
+            std::string stored = _sessionManager.getTheme(sessionId);
+            if (theme.empty())
+            {
+                if (stored.empty()) stored = "light";
+                theme = stored;
+                _sessionManager.setTheme(sessionId, theme);
+                themeCookieNeeded = true;
+            }
+            else
+            {
+                if (theme != stored)
+                    _sessionManager.setTheme(sessionId, theme);
+            }
+        }
+    }
 
     if (server.client_max_body_size > 0 && req.getBody().size() > static_cast<size_t>(server.client_max_body_size))
     {
@@ -220,6 +268,16 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
         return true;
     }
     Response res = Router::routeRequest(server, req);
+    if (newSession)
+    {
+        std::string val = std::string("session_id=") + sessionId + "; Path=/";
+        res.setHeader("Set-Cookie", val);
+    }
+    if (themeCookieNeeded)
+    {
+        std::string val = std::string("theme=") + theme + "; Path=/";
+        res.setHeader("Set-Cookie", val);
+    }
     client.setResponse(res.build());
     client.setCloseAfterResponse(req.shouldClose());
     pfd.events = POLLIN | POLLOUT;

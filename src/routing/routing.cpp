@@ -375,6 +375,7 @@ Response Router::routeRequest(const Server& server, Request& request)
     std::string request_path = stripQueryAndFragment(request.getPath());
     for (size_t i = 0; i < server.locations.size(); i++)
     {
+        
         const Location& loc = server.locations[i];
         std::string loc_path = loc.path;
         bool is_exact = false;
@@ -403,6 +404,7 @@ Response Router::routeRequest(const Server& server, Request& request)
         }
     }
     const Location* location = matched_location;
+    
     int effectiveBodyLimit = server.client_max_body_size;
     if (location && location->client_max_body_size_set)
         effectiveBodyLimit = location->client_max_body_size;
@@ -495,9 +497,7 @@ Response Router::routeRequest(const Server& server, Request& request)
                 index_path += "/";
             index_path += location->index;
             if (fileExists(index_path))
-            {
                 full_path = index_path;
-            }
             else
             {
                 if (location->autoindex == "on")
@@ -528,6 +528,5 @@ Response Router::routeRequest(const Server& server, Request& request)
     std::string ext = getExtension(full_path);
     if (isCgiExtension(ext, location->cgi_ext))
         return serveCgi(*location, request, full_path);
-
     return serveStaticFile(full_path);
 }

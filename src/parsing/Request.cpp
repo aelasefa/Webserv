@@ -4,6 +4,21 @@
 #include <cstdlib>
 #include <cerrno>
 
+std::string Request::getCookieValue(const std::string &cookieHeader, const std::string &key)
+{
+    size_t pos = cookieHeader.find(key + "=");
+    if (pos == std::string::npos)
+        return "";
+
+    pos += key.size() + 1;
+
+    size_t end = cookieHeader.find(';', pos);
+    if (end == std::string::npos)
+        end = cookieHeader.size();
+
+    return cookieHeader.substr(pos, end - pos);
+}
+
 Request::Request()
 {
     _state = START_LINE;

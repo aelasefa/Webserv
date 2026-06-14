@@ -1,6 +1,14 @@
 #include "../../includes/Response.hpp"
 #include <sstream>
 
+#include <algorithm>
+#include <cctype>
+
+std::string makeSetCookie(const std::string &key, const std::string &value)
+{
+    return key + "=" + value + "; Path=/";
+}
+
 static std::string intToString(size_t value)
 {
     std::ostringstream oss;
@@ -92,7 +100,7 @@ int Response::getStatusCode() const {
 }
 
 void Response::setHeader(const std::string& key, const std::string& value) {
-    headers[key] = value;
+    headers.push_back(std::make_pair(key, value));
 }
 
 void Response::setBody(const std::string& content) {
@@ -119,13 +127,23 @@ std::string Response::build() const {
     result += " ";
     result += statusMessage;
     result += "\r\n";
-    std::map<std::string, std::string> tempHeaders(headers);
-    if (tempHeaders.find("Content-Type") == tempHeaders.end())
-        tempHeaders["Content-Type"] = "text/plain";
-    if (tempHeaders.find("Content-Length") == tempHeaders.end())
-        tempHeaders["Content-Length"] = intToString(body.size());
-    for (std::map<std::string, std::string>::const_iterator it = tempHeaders.begin();
-        it != tempHeaders.end(); ++it)
+    bool hasContentType = false;
+    bool hasContentLength = false;
+    for (std::vector< std::pair<std::string, std::string> >::const_iterator it = headers.begin(); it != headers.end(); ++it)
+    {
+        std::string keyLower = it->first;
+        for (size_t i = 0; i < keyLower.size(); ++i)
+            keyLower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(keyLower[i])));
+        if (keyLower == "content-type")
+            hasContentType = true;
+        if (keyLower == "content-length")
+            hasContentLength = true;
+    }
+    if (!hasContentType)
+        result += std::string("Content-Type: text/plain\r\n");
+    if (!hasContentLength)
+        result += std::string("Content-Length: ") + intToString(body.size()) + "\r\n";
+    for (std::vector< std::pair<std::string, std::string> >::const_iterator it = headers.begin(); it != headers.end(); ++it)
     {
         result += it->first;
         result += ": ";

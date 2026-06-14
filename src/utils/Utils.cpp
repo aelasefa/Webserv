@@ -56,7 +56,7 @@ std::string Utils::toLower(const std::string &str)
     std::string res = str;
 
     for (size_t i = 0; i < res.size(); i++)
-        res[i] = std::tolower(res[i]);
+        res[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(res[i])));
 
     return res;
 }

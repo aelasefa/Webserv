@@ -58,6 +58,7 @@ public:
     bool isDone() const;
     bool hasError() const;
     void reset();
+    static std::string getCookieValue(const std::string &cookieHeader, const std::string &key);
 
     std::string getErrorStatus() const;
     bool shouldClose() const;
@@ -74,4 +75,4 @@ public:
     std::string getHeader(const std::string& key) const;
 };
 
-#endif
+#endif   
