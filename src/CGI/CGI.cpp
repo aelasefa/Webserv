@@ -88,7 +88,6 @@ std::string CGI::execute(const Request& request) {
             throw std::runtime_error("CGI execution failed");
         return result;
     }
-<<<<<<< HEAD
 }
 
 Response CGIHandler::buildResponse(const std::string& cgiOutput)
@@ -149,10 +148,5 @@ Response CGIHandler::buildResponse(const std::string& cgiOutput)
 
     res.setBody(bodyPart);
     res.setHeader("Content-Length", intToString(bodyPart.size()));
-
     return res;
-=======
-
-    return std::string();
->>>>>>> main
 }
