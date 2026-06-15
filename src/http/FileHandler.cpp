@@ -142,6 +142,9 @@ Response FileHandler::post(const std::string &fullPath,
     if (slash == std::string::npos)
         return buildResponse(400, "Bad Request", "text/plain", connection);
 
+    if (access(fullPath.c_str(), F_OK) == 0)
+        return buildResponse(409, "File already exists",
+                             "text/plain", connection);
     std::string dir = fullPath.substr(0, slash);
 
     struct stat st;
