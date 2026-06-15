@@ -11,9 +11,11 @@
 #include "Response.hpp"
 #include <sstream>
 #include <cstdlib>
+#include <fcntl.h>
+#include <signal.h>
+#include <ctime>
 
-class CGI
-{
+class CGI {
 	private:
 		std::string _scriptPath;
 		std::string _interpreter;
