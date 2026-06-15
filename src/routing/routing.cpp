@@ -5,6 +5,7 @@
 #include "../../includes/FileHandler.hpp"
 #include <sys/stat.h>
 #include <dirent.h>
+#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
@@ -460,8 +461,17 @@ Response Router::routeRequest(const Server& server, Request& request)
                 std::string cleaned = sanitizeFilename(filenames[i]);
                 if (cleaned.empty())
                     return serveError(403);
+                std::string target = uploadPath;
 
-                Response res = FileHandler::post("/" + cleaned, contents[i], request.getConnectionHeader(), uploadPath);
+                if (!target.empty() && target[target.size() - 1] != '/')
+                    target += '/';
+
+                target += cleaned;
+
+                Response res = FileHandler::post(
+                    target,
+                    contents[i],
+                    request.getConnectionHeader());
                 if (res.getStatusCode() >= 400)
                     return res;
             }
@@ -473,14 +483,30 @@ Response Router::routeRequest(const Server& server, Request& request)
             resp.setBody("Uploaded");
             return resp;
         }
-
         std::string filename = sanitizeFilename(baseName(request_path));
         if (filename.empty())
             return serveError(403);
 
-        return FileHandler::post("/" + filename, request.getBody(), request.getConnectionHeader(), uploadPath);
-    }
+        std::string target = uploadPath;
 
+        if (!target.empty() && target[target.size() - 1] != '/')
+            target += '/';
+
+        target += filename;
+
+        return FileHandler::post(
+            target,
+            request.getBody(),
+            request.getConnectionHeader());
+    }
+    if (request.getMethod() == "DELETE")
+    {
+        std::string full_path = buildPath(server, *location, request_path);
+
+        return FileHandler::del(
+            full_path,
+            request.getConnectionHeader());
+    }
     if (!location)
         return serveError(404);
 
