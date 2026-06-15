@@ -1,8 +1,5 @@
 #include "../../includes/CGI.hpp"
 
-#include <cstdlib>
-#include <sstream>
-
 CGI::CGI() {}
 
 CGI::~CGI() {}
@@ -22,7 +19,7 @@ std::vector<std::string> CGI::setEnv(const Request& request) {
     env.push_back("CONTENT_LENGTH=" + intToString(request.getBody().size()));
     env.push_back("CONTENT_TYPE=" + request.getHeader("Content-Type"));
     env.push_back("SCRIPT_NAME=" + _scriptPath);
-    env.push_back("GATEWAY_INTERFACE=CGI/1.1");
+    env.push_back("GATEWAY_INTERFACE=" + request.getVersion());
     env.push_back("SCRIPT_FILENAME=" + _scriptPath);
     env.push_back("REDIRECT_STATUS=200");
     env.push_back("SERVER_PROTOCOL=HTTP/1.1");
@@ -68,16 +65,36 @@ std::string CGI::execute(const Request& request) {
         close(inputPipe[0]);
         close(outputPipe[1]);
         write(inputPipe[1], request.getBody().c_str(),
-        request.getBody().size());
+            request.getBody().size());
         close(inputPipe[1]);
         char buffer[1024];
         std::string result;
         ssize_t bytes;
-        while ((bytes = read(outputPipe[0], buffer, sizeof(buffer))) > 0)
-            result.append(buffer, bytes);
-        close(outputPipe[0]);
+        fcntl(outputPipe[0], F_SETFL, O_NONBLOCK);
         int status;
-        waitpid(pid, &status, 0);
+        time_t start_time = time(NULL);
+        while (true) {
+            pid_t proc = waitpid(pid, &status, WNOHANG);
+            time_t elapsed = time(NULL) - start_time;
+            while ((bytes = read(outputPipe[0], buffer, sizeof(buffer))) > 0)
+                result.append(buffer, bytes);
+            if (proc == pid)
+                break;
+            else if (proc == 0) {
+                if (elapsed >= 30) {
+                    kill(pid, SIGKILL);
+                    waitpid(pid, &status, 0);
+                    close(outputPipe[0]);
+                    throw std::runtime_error("CGI timeout");
+                }
+                usleep(10000);
+            }
+            else if (proc == -1) {
+                close(outputPipe[0]);
+                throw std::runtime_error("waitpid failed");
+            }
+        }
+        close(outputPipe[0]);
         if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
             throw std::runtime_error("CGI execution failed");
         return result;

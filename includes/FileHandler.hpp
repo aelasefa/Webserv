@@ -7,9 +7,12 @@
 class FileHandler
 {
 public:
-    static Response get(const std::string &path, const std::string &connection, const std::string &docRoot);
-    static Response post(const std::string &path, const std::string &body, const std::string &connection, const std::string &docRoot);
-    static Response del(const std::string &path, const std::string &connection, const std::string &docRoot);
+    static bool normalizePath(const std::string &rawPath, std::string &normalized);
+    static bool ensureDir(const std::string &path);
+    static bool createTempFile(const std::string &targetPath, std::string &tempPath, int &fd);
+    static Response get(const std::string& fullPath, const std::string& connection);
+    static Response post(const std::string& fullPath, const std::string& body, const std::string& connection);
+    static Response del(const std::string& fullPath, const std::string& connection);
 
 private:
     static Response buildResponse(int status,
