@@ -245,18 +245,31 @@ Response Router::serveCgi(const Location& location, const Request& request, cons
     return response;
 }
 
-std::string Router::buildPath(const Server& server, const Location& location, const std::string& request_path)
+std::string Router::buildPath(const Server& server,const Location& location,const std::string& request_path)
 {
     std::string root = location.root.empty() ? server.root : location.root;
-    std::string cleaned_path = request_path;
-    size_t q = cleaned_path.find('?');
+    std::string path = request_path;
+
+    size_t q = path.find('?');
     if (q != std::string::npos)
-        cleaned_path = cleaned_path.substr(0, q);
-    if (!root.empty() && root[root.size() - 1] == '/' && !cleaned_path.empty() && cleaned_path[0] == '/')
-        return root + cleaned_path.substr(1);
-    if (!root.empty() && root[root.size() - 1] != '/' && (!cleaned_path.empty() && cleaned_path[0] != '/'))
-        return root + "/" + cleaned_path;
-    return root + cleaned_path;
+        path = path.substr(0, q);
+
+    if (location.path != "/" &&
+        path.compare(0, location.path.size(), location.path) == 0)
+    {
+        path.erase(0, location.path.size());
+
+        if (path.empty() || path[0] != '/')
+            path = "/" + path;
+    }
+
+    if (!root.empty() && root[root.size() - 1] == '/')
+        root.erase(root.size() - 1);
+
+    if (!path.empty() && path[0] != '/')
+        path = "/" + path;
+
+    return root + path;
 }
 
 bool Router::fileExists(const std::string& path)
