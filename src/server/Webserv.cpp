@@ -270,7 +270,19 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
         pfd.events = POLLIN | POLLOUT;
         return true;
     }
-    Response res = Router::routeRequest(server, req);
+    
+    Response res;
+    try
+    {
+        res = Router::routeRequest(server, req);
+    }
+    catch (const std::exception& e)
+    {
+        res.setStatus(500);
+        res.setHeader("Connection", "close");
+        res.setHeader("Content-Type", "text/plain");
+        res.setBody("500 Internal Server Error");
+    }
     if (newSession)
     {
         std::string val = std::string("session_id=") + sessionId + "; Path=/";
@@ -418,12 +430,14 @@ void Webserv::startLoop()
 {
     while (true)
     {
-        int poll_ret = poll(&_poll_fds[0], _poll_fds.size(), POLL_TIMEOUT_MS);
-        if (poll_ret < 0)
+        try
         {
-            perror("poll");
-            break;
-        }
+            int poll_ret = poll(&_poll_fds[0], _poll_fds.size(), POLL_TIMEOUT_MS);
+            if (poll_ret < 0)
+            {
+                perror("poll");
+                break;
+            }
 
         time_t now = std::time(NULL);
         for (size_t i = 0; i < _poll_fds.size();)
@@ -481,5 +495,11 @@ void Webserv::startLoop()
                 handleClientWrite(i);
             }
         }
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << e.what() << std::endl;
+        }
+        catch (...) { }
     }
 }
