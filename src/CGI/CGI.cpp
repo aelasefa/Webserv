@@ -19,10 +19,32 @@ std::vector<std::string> CGI::setEnv(const Request& request) {
     env.push_back("CONTENT_LENGTH=" + intToString(request.getBody().size()));
     env.push_back("CONTENT_TYPE=" + request.getHeader("Content-Type"));
     env.push_back("SCRIPT_NAME=" + _scriptPath);
-    env.push_back("GATEWAY_INTERFACE=" + request.getVersion());
+    env.push_back("GATEWAY_INTERFACE=CGI/1.1");
     env.push_back("SCRIPT_FILENAME=" + _scriptPath);
     env.push_back("REDIRECT_STATUS=200");
     env.push_back("SERVER_PROTOCOL=HTTP/1.1");
+    
+    const std::map<std::string, std::string>& headers = request.getHeaders();
+    for (std::map<std::string, std::string>::const_iterator it = headers.begin(); 
+         it != headers.end(); ++it) {
+        std::string headerKey = it->first;
+        std::string headerValue = it->second;
+        
+        if (headerKey == "Content-Type" || headerKey == "Content-Length")
+            continue;
+        
+        std::string envKey = "HTTP_";
+        for (size_t i = 0; i < headerKey.length(); ++i) {
+            char c = headerKey[i];
+            if (c == '-')
+                envKey += '_';
+            else
+                envKey += std::toupper(c);
+        }
+        
+        env.push_back(envKey + "=" + headerValue);
+    }
+    
     return env;
 }
 
