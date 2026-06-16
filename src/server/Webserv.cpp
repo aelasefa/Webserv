@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <fstream>
+#include <sstream>
 
 namespace
 {
@@ -95,10 +97,11 @@ namespace
 
     int createServerSocket(int port)
     {
+        std::cout << "[SERVER] Creating socket..." << std::endl;
         int server_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (server_fd < 0)
             throw std::runtime_error("socket failed");
-
+        std::cout << "[SERVER] Socket created fd=" << server_fd << std::endl;
         int opt = 1;
         setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
@@ -108,16 +111,16 @@ namespace
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = INADDR_ANY;
         addr.sin_port = htons(port);
-
+        std::cout << "[SERVER] Binding to port " << port << std::endl;
         if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0)
             throw std::runtime_error("bind failed");
-
+        std::cout << "[SERVER] Bind successful" << std::endl;
+        std::cout << "[SERVER] Listening on port "
+          << port << std::endl;
         if (listen(server_fd, SOMAXCONN) < 0)
             throw std::runtime_error("listen failed");
 
         setNonBlocking(server_fd);
-
-        std::cout << "[SERVER] Listening on port " << port << std::endl;
 
         return server_fd;
     }
@@ -200,8 +203,41 @@ void Webserv::handleNewConnection(int server_fd)
         }
     }
     _clients.insert(std::make_pair(client_fd, Client(client_fd, serverIndex)));
+}
 
-    std::cout << "[CONNECT] fd=" << client_fd << std::endl;
+Response Webserv::buildErrorResponse(const Server &server, int code)
+{
+    Response res;
+    res.setStatus(code);
+    res.setHeader("Connection", "close");
+
+    std::map<int, std::string>::const_iterator it =
+        server.error_pages.find(code);
+
+    std::string path;
+    if (it != server.error_pages.end())
+    {
+        path = server.root;
+        if (!path.empty() && path[path.size() - 1] != '/')
+            path += "/";
+        path += it->second;
+    }
+
+    std::ifstream file(path.c_str());
+    if (file)
+    {
+        std::stringstream ss;
+        ss << file.rdbuf();
+        res.setHeader("Content-Type", "text/html");
+        res.setBody(ss.str());
+    }
+    else
+    {
+        res.setHeader("Content-Type", "text/plain");
+        res.setBody("Error " + Utils::toString(code));
+    }
+
+    return res;
 }
 
 bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
@@ -315,25 +351,38 @@ void Webserv::handleClientRead(size_t index)
         return;
     }
 
+    const size_t serverIndex = client.getServerIndex();
+    const Server &server =
+        (serverIndex < _servers.size()) ? _servers[serverIndex] : _servers[0];
+
     if (client.hasError())
     {
-        Response res;
-        res.setStatus(client.getErrorCode());
-        res.setHeader("Connection", "close");
-        res.setHeader("Content-Type", "text/plain");
-        res.setBody("Request too large");
-        client.setResponse(res.build());
+        int code = client.getErrorCode();
+
+        client.setResponse(
+            buildErrorResponse(server, code).build()
+        );
+
         client.setCloseAfterResponse(true);
         _poll_fds[index].events = POLLIN | POLLOUT;
         return;
     }
 
-    const size_t serverIndex = client.getServerIndex();
-    if (serverIndex < _servers.size())
-        client.setMaxBodySize(_servers[serverIndex].client_max_body_size);
+    if (server.client_max_body_size > 0 &&
+        client.getRequestBuffer().size() > (size_t)server.client_max_body_size)
+    {
+        client.setResponse(
+            buildErrorResponse(server, 413).build()
+        );
+
+        client.setCloseAfterResponse(true);
+        _poll_fds[index].events = POLLIN | POLLOUT;
+        return;
+    }
 
     Request &req = client.getParser();
     std::string &buffer = client.getRequestBuffer();
+
     bool parsed = req.parse(buffer);
 
     if (!parsed && !req.hasError())
@@ -341,13 +390,12 @@ void Webserv::handleClientRead(size_t index)
 
     if (req.hasError())
     {
-        Response res;
         int code = parseStatusCode(req.getErrorStatus());
-        res.setStatus(code);
-        res.setHeader("Connection", "close");
-        res.setHeader("Content-Type", "text/plain");
-        res.setBody(req.getErrorStatus());
-        client.setResponse(res.build());
+
+        client.setResponse(
+            buildErrorResponse(server, code).build()
+        );
+
         client.setCloseAfterResponse(true);
         _poll_fds[index].events = POLLIN | POLLOUT;
         return;
@@ -379,51 +427,55 @@ void Webserv::handleClientWrite(size_t index)
         return;
     }
 
-    if (client.responseComplete())
+    if (!client.responseComplete())
+        return;
+
+    if (client.shouldCloseAfterResponse())
     {
-        if (client.shouldCloseAfterResponse())
-        {
-            removeClientAt(index);
-            return;
-        }
-
-        std::string remaining = client.getRequest();
-        client.resetForNextRequest(remaining);
-
-        if (client.hasBufferedData())
-        {
-            Request &req = client.getParser();
-            std::string &buffer = client.getRequestBuffer();
-            bool parsed = req.parse(buffer);
-            if (parsed)
-            {
-                processClientRequest(client, req, _poll_fds[index]);
-            }
-            else
-            {
-                if (req.hasError())
-                {
-                    Response res;
-                    int code = parseStatusCode(req.getErrorStatus());
-                    res.setStatus(code);
-                    res.setHeader("Connection", "close");
-                    res.setHeader("Content-Type", "text/plain");
-                    res.setBody(req.getErrorStatus());
-                    client.setResponse(res.build());
-                    client.setCloseAfterResponse(true);
-                    _poll_fds[index].events = POLLIN;
-                }
-                else
-                {
-                    _poll_fds[index].events = POLLIN;
-                }
-            }
-        }
-        else
-        {
-            _poll_fds[index].events = POLLIN | POLLOUT;
-        }
+        removeClientAt(index);
+        return;
     }
+
+    std::string remaining = client.getRequest();
+    client.resetForNextRequest(remaining);
+
+    if (!client.hasBufferedData())
+    {
+        _poll_fds[index].events = POLLIN;
+        return;
+    }
+
+    Request &req = client.getParser();
+    std::string &buffer = client.getRequestBuffer();
+
+    bool parsed = req.parse(buffer);
+
+    if (parsed)
+    {
+        processClientRequest(client, req, _poll_fds[index]);
+        return;
+    }
+
+    if (req.hasError())
+    {
+        const size_t serverIndex = client.getServerIndex();
+        const Server &server =
+            (serverIndex < _servers.size())
+                ? _servers[serverIndex]
+                : _servers[0];
+
+        int code = parseStatusCode(req.getErrorStatus());
+
+        client.setResponse(
+            buildErrorResponse(server, code).build()
+        );
+
+        client.setCloseAfterResponse(true);
+        _poll_fds[index].events = POLLIN | POLLOUT;
+        return;
+    }
+
+    _poll_fds[index].events = POLLIN;
 }
 
 void Webserv::startLoop()
