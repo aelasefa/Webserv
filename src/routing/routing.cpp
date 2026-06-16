@@ -541,9 +541,6 @@ Response Router::routeRequest(const Server& server, Request& request)
     {
         std::string full_path = buildPath(server, *location, request_path);
 
-        std::cout << "request_path = [" << request_path << "]\n";
-        std::cout << "buildPath    = [" << buildPath(server, *location, request_path) << "]\n";
-        std::cout << "server.root  = [" << server.root << "]\n";
         if (full_path.find(server.root) != 0)
         {
             if (!server.root.empty() && server.root[server.root.size() - 1] != '/')
