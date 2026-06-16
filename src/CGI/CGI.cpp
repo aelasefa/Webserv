@@ -103,7 +103,7 @@ std::string CGI::execute(const Request& request) {
             if (proc == pid)
                 break;
             else if (proc == 0) {
-                if (elapsed >= 30) {
+                if (elapsed >= CGI_TIMEOUT) {
                     kill(pid, SIGKILL);
                     waitpid(pid, &status, 0);
                     close(outputPipe[0]);
