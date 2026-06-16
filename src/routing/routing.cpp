@@ -255,7 +255,8 @@ std::string Router::buildPath(const Server& server,const Location& location,cons
     if (q != std::string::npos)
         path = path.substr(0, q);
 
-    if (location.path != "/" &&
+    if (!location.root.empty() &&
+        location.path != "/" &&
         path.compare(0, location.path.size(), location.path) == 0)
     {
         path.erase(0, location.path.size());
@@ -263,7 +264,6 @@ std::string Router::buildPath(const Server& server,const Location& location,cons
         if (path.empty() || path[0] != '/')
             path = "/" + path;
     }
-
     if (!root.empty() && root[root.size() - 1] == '/')
         root.erase(root.size() - 1);
 
@@ -417,8 +417,9 @@ Response Router::routeRequest(const Server& server, Request& request)
             }
         }
     }
-    const Location* location = matched_location;
-    
+    const Location *location = matched_location;
+    if (!location)
+        return serveError(404);
     int effectiveBodyLimit = server.client_max_body_size;
     if (location && location->client_max_body_size_set)
         effectiveBodyLimit = location->client_max_body_size;
@@ -435,15 +436,21 @@ Response Router::routeRequest(const Server& server, Request& request)
     {
         bool uploadEnabled = server.upload_enable;
         std::string uploadPath = server.upload_path;
+
         if (location && location->upload_enable_set)
             uploadEnabled = location->upload_enable;
+
         if (location && location->upload_path_set)
             uploadPath = location->upload_path;
+
+        if (!uploadEnabled)
+            return serveError(403);
 
         if (location)
         {
             std::string full_path = buildPath(server, *location, request_path);
             std::string ext = getExtension(full_path);
+
             if (isCgiExtension(ext, location->cgi_ext))
             {
                 if (!fileExists(full_path))
@@ -452,17 +459,23 @@ Response Router::routeRequest(const Server& server, Request& request)
             }
         }
 
-        if (!uploadEnabled)
-            return serveError(403);
         if (uploadPath.empty())
             return serveError(403);
 
+        if (!FileHandler::ensureDir(uploadPath))
+            return serveError(500);
+
         std::string contentType = request.getHeader("Content-Type");
         std::string boundary = extractBoundary(contentType);
+
+        // ========================
+        // MULTIPART UPLOAD
+        // ========================
         if (!boundary.empty())
         {
             std::vector<std::string> filenames;
             std::vector<std::string> contents;
+
             if (!extractMultipartFiles(request.getBody(), boundary, filenames, contents))
                 return serveError(400);
 
@@ -474,8 +487,8 @@ Response Router::routeRequest(const Server& server, Request& request)
                 std::string cleaned = sanitizeFilename(filenames[i]);
                 if (cleaned.empty())
                     return serveError(403);
-                std::string target = uploadPath;
 
+                std::string target = uploadPath;
                 if (!target.empty() && target[target.size() - 1] != '/')
                     target += '/';
 
@@ -485,6 +498,7 @@ Response Router::routeRequest(const Server& server, Request& request)
                     target,
                     contents[i],
                     request.getConnectionHeader());
+
                 if (res.getStatusCode() >= 400)
                     return res;
             }
@@ -496,12 +510,15 @@ Response Router::routeRequest(const Server& server, Request& request)
             resp.setBody("Uploaded");
             return resp;
         }
+
+        // ========================
+        // SINGLE FILE UPLOAD
+        // ========================
         std::string filename = sanitizeFilename(baseName(request_path));
         if (filename.empty())
             return serveError(403);
 
         std::string target = uploadPath;
-
         if (!target.empty() && target[target.size() - 1] != '/')
             target += '/';
 
@@ -520,23 +537,48 @@ Response Router::routeRequest(const Server& server, Request& request)
             full_path,
             request.getConnectionHeader());
     }
-    if (!location)
-        return serveError(404);
-
-    std::string full_path = buildPath(server, *location, request_path);
-    if (!fileExists(full_path))
-        return serveError(404);
-
-    if (isDirectory(full_path))
+    if (request.getMethod() == "GET")
     {
-        if (!location->index.empty())
+        std::string full_path = buildPath(server, *location, request_path);
+
+        std::cout << "request_path = [" << request_path << "]\n";
+        std::cout << "buildPath    = [" << buildPath(server, *location, request_path) << "]\n";
+        std::cout << "server.root  = [" << server.root << "]\n";
+        if (full_path.find(server.root) != 0)
         {
-            std::string index_path = full_path;
-            if (!index_path.empty() && index_path[index_path.size() - 1] != '/')
-                index_path += "/";
-            index_path += location->index;
-            if (fileExists(index_path))
-                full_path = index_path;
+            if (!server.root.empty() && server.root[server.root.size() - 1] != '/')
+                full_path = server.root + "/" + full_path;
+            else
+                full_path = server.root + full_path;
+        }
+
+        if (!fileExists(full_path))
+            return serveError(404);
+
+        if (isDirectory(full_path))
+        {
+            if (!location->index.empty())
+            {
+                std::string index_path = full_path;
+                if (!index_path.empty() && index_path[index_path.size() - 1] != '/')
+                    index_path += "/";
+                index_path += location->index;
+
+                if (fileExists(index_path))
+                    full_path = index_path;
+                else
+                {
+                    if (location->autoindex == "on")
+                    {
+                        Response response;
+                        response.setStatus(200);
+                        response.setHeader("Content-Type", "text/html");
+                        response.setBody(generateDirectoryListing(full_path, request_path));
+                        return response;
+                    }
+                    return serveError(403);
+                }
+            }
             else
             {
                 if (location->autoindex == "on")
@@ -550,22 +592,12 @@ Response Router::routeRequest(const Server& server, Request& request)
                 return serveError(403);
             }
         }
-        else
-        {
-            if (location->autoindex == "on")
-            {
-                Response response;
-                response.setStatus(200);
-                response.setHeader("Content-Type", "text/html");
-                response.setBody(generateDirectoryListing(full_path, request_path));
-                return response;
-            }
-            return serveError(403);
-        }
+        std::string ext = getExtension(full_path);
+        if (isCgiExtension(ext, location->cgi_ext))
+            return serveCgi(*location, request, full_path);
+
+        return serveStaticFile(full_path);
     }
 
-    std::string ext = getExtension(full_path);
-    if (isCgiExtension(ext, location->cgi_ext))
-        return serveCgi(*location, request, full_path);
-    return serveStaticFile(full_path);
+    return serveError(405);
 }
