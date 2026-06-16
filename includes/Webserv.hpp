@@ -6,9 +6,12 @@
 #include <poll.h>
 #include <vector>
 #include <map>
+
 #include "Client.hpp"
 #include "Server.hpp"
 #include "SessionManager.hpp"
+#include "Request.hpp"
+#include "Response.hpp"
 
 class Webserv
 {
@@ -27,6 +30,9 @@ private:
     void handleClientWrite(size_t index);
     bool processClientRequest(Client &client, Request &req, pollfd &pfd);
     bool isServerFd(int fd) const;
+    Response buildErrorResponse(const Server &server, int code);
+
+    const Server &getServerByIndex(size_t index) const;
 
 public:
     Webserv(const std::vector<Server> &servers);
@@ -34,7 +40,6 @@ public:
 
     void initServers();
     void startLoop();
-
 };
 
 #endif
