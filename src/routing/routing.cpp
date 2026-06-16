@@ -468,9 +468,6 @@ Response Router::routeRequest(const Server& server, Request& request)
         std::string contentType = request.getHeader("Content-Type");
         std::string boundary = extractBoundary(contentType);
 
-        // ========================
-        // MULTIPART UPLOAD
-        // ========================
         if (!boundary.empty())
         {
             std::vector<std::string> filenames;
@@ -511,9 +508,6 @@ Response Router::routeRequest(const Server& server, Request& request)
             return resp;
         }
 
-        // ========================
-        // SINGLE FILE UPLOAD
-        // ========================
         std::string filename = sanitizeFilename(baseName(request_path));
         if (filename.empty())
             return serveError(403);
