@@ -3,6 +3,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <cerrno>
+#include <limits>
 
 std::string Request::getCookieValue(const std::string &cookieHeader, const std::string &key)
 {
@@ -32,7 +33,7 @@ Request::Request()
     _errorStatus.clear();
     _shouldClose = true;
     _queryString.clear();
-    _maxBodySize = MAX_BODY_SIZE;
+    _maxBodySize = std::numeric_limits<size_t>::max();
 }
 
 Request::~Request() {}
@@ -55,7 +56,7 @@ void Request::reset()
     _chunkBytesRead = 0;
     _errorStatus.clear();
     _shouldClose = true;
-    _maxBodySize = MAX_BODY_SIZE;
+    _maxBodySize = std::numeric_limits<size_t>::max();
 }
 
 namespace
@@ -117,9 +118,6 @@ std::string Request::getConnectionHeader() const
 
 void Request::setMaxBodySize(size_t maxBodySize)
 {
-    if (maxBodySize == 0)
-        _maxBodySize = MAX_BODY_SIZE;
-    else
         _maxBodySize = maxBodySize;
 }
 

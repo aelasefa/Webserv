@@ -1,6 +1,7 @@
 #include "../../includes/Client.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
+#include <limits>
 
 #define BUFFER_SIZE 4096
 
@@ -11,7 +12,7 @@ Client::Client(int fd, size_t serverIndex)
             _isComplete(false),
             _contentLength(0),
             _parser(),
-            _maxBodySize(MAX_BODY_SIZE),
+            _maxBodySize(std::numeric_limits<size_t>::max()),
             _responseBuffer(""),
             _bytesSent(0),
             _hasError(false),
@@ -19,6 +20,7 @@ Client::Client(int fd, size_t serverIndex)
             _closeAfterResponse(false),
             _lastActive(std::time(NULL))
 {
+        _parser.setMaxBodySize(_maxBodySize);
 }
 
 bool Client::readData()
@@ -44,12 +46,11 @@ void Client::appendData(const std::string &buffer)
     if (_hasError)
         return;
 
-    if (_request.size() + buffer.size() > MAX_REQUEST_SIZE)
+    if (_request.size() > _maxBodySize - buffer.size())
     {
         setError(413);
         return;
     }
-
     _request += buffer;
 }
 
@@ -118,7 +119,7 @@ Request &Client::getParser()
 
 void Client::setMaxBodySize(size_t maxBodySize)
 {
-    _maxBodySize = (maxBodySize == 0) ? MAX_BODY_SIZE : maxBodySize;
+    _maxBodySize = maxBodySize;
     _parser.setMaxBodySize(_maxBodySize);
 }
 

@@ -7,7 +7,6 @@
 #include <ctime>
 #include "Request.hpp"
 
-#define MAX_REQUEST_SIZE (MAX_BODY_SIZE + 8192)
 
 class Client
 {
