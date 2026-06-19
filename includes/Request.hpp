@@ -4,7 +4,6 @@
 #include <string>
 #include <map>
 
-#define MAX_BODY_SIZE 1048576
 
 class Request
 {

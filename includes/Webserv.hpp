@@ -39,6 +39,7 @@ public:
     ~Webserv();
 
     void initServers();
+    void setNonBlocking(int fd);
     void startLoop();
 };
 

@@ -1,4 +1,5 @@
 #include "../../includes/FileHandler.hpp"
+#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h>
@@ -52,19 +53,29 @@ bool normalizePath(const std::string &rawPath, std::string &normalized)
     return true;
 }
 
-bool ensureDir(const std::string &path)
+bool FileHandler::ensureDir(const std::string &path)
 {
-    size_t pos = 1;
+    size_t pos = 0;
+
     while ((pos = path.find('/', pos)) != std::string::npos)
     {
         std::string dir = path.substr(0, pos);
-        if (access(dir.c_str(), F_OK) != 0)
+
+        if (!dir.empty() && access(dir.c_str(), F_OK) != 0)
         {
             if (mkdir(dir.c_str(), 0755) != 0)
                 return false;
         }
+
         pos++;
     }
+
+    if (access(path.c_str(), F_OK) != 0)
+    {
+        if (mkdir(path.c_str(), 0755) != 0)
+            return false;
+    }
+
     return true;
 }
 
@@ -120,7 +131,6 @@ Response FileHandler::buildResponse(int status,
 }
 
 // ================= GET =================
-
 Response FileHandler::get(const std::string &fullPath,
                           const std::string &connection)
 {

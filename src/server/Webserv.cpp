@@ -471,6 +471,17 @@ void Webserv::handleClientWrite(size_t index)
     _poll_fds[index].events = POLLIN;
 }
 
+void Webserv::setNonBlocking(int fd) {
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0)
+        return;
+
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        std::cerr << "Error: fcntl non-blocking failed\n";
+    }
+}
+
 void Webserv::startLoop()
 {
     while (true)

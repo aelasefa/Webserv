@@ -60,12 +60,12 @@ namespace
             return left + "/" + right;
         return left + right;
     }
-
+    
     std::string effectiveRoot(const std::string &root)
     {
-        if (!root.empty())
-            return root;
-        return "./website";
+        if (root.empty())
+            throw std::runtime_error("server root not configured");
+        return root;
     }
 
     std::string getExtension(const std::string &path)
@@ -861,6 +861,8 @@ namespace
     {
         bool uploadEnabled = server.upload_enable;
         std::string uploadPath = server.upload_path;
+        if (!uploadPath.empty() && uploadPath[0] != '/')
+            uploadPath = joinPaths(server.root, uploadPath);
 
         if (loc)
         {
@@ -983,7 +985,6 @@ Response MethodHandler::handleGet(const Request &req,
             return serveConfiguredErrorPage(server, 403, connection);
         return serveConfiguredErrorPage(server, 500, connection);
     }
-
     if (S_ISDIR(st.st_mode))
         return serveDirectory(server, loc, path, req.getPath(), connection);
 
