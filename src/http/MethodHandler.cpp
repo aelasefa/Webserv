@@ -60,12 +60,12 @@ namespace
             return left + "/" + right;
         return left + right;
     }
-
+    
     std::string effectiveRoot(const std::string &root)
     {
-        if (!root.empty())
-            return root;
-        return "./website";
+        if (root.empty())
+            throw std::runtime_error("server root not configured");
+        return root;
     }
 
     std::string getExtension(const std::string &path)
