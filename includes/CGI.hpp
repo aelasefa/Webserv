@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <ctime>
-#define CGI_TIMEOUT 5
+#define CGI_TIMEOUT 30
 
 class CGI {
 	private:
