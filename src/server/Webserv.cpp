@@ -322,8 +322,18 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
         std::string val = std::string("theme=") + theme + "; Path=/";
         res.setHeader("Set-Cookie", val);
     }
-    client.setResponse(res.build());
-    client.setCloseAfterResponse(req.shouldClose());
+
+    if (res.isFileBody())
+    {
+        bool opened = client.setResponseHeaderAndFile(res.buildHeaders(), res.getFilePath(), res.getFileSize());
+        client.setCloseAfterResponse(opened ? req.shouldClose() : true);
+    }
+    else
+    {
+        client.setResponse(res.build());
+        client.setCloseAfterResponse(req.shouldClose());
+    }
+
     pfd.events = POLLIN | POLLOUT;
     return true;
 }

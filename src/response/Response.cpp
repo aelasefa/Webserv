@@ -17,7 +17,8 @@ std::string intToString(size_t value)
 }
 
 Response::Response() : statusCode(200),
-        statusMessage("OK"), body("") {}
+        statusMessage("OK"), body(""),
+        _isFileBody(false), _filePath(""), _fileSize(0) {}
 
 void Response::setStatus(int status)
 {
@@ -64,9 +65,35 @@ void Response::setHeader(const std::string& key, const std::string& value) {
 
 void Response::setBody(const std::string& content) {
     body = content;
+    _isFileBody = false;
+    _filePath.clear();
+    _fileSize = 0;
 }
 
-std::string Response::build() const {
+void Response::setFileBody(const std::string &path, size_t fileSize)
+{
+    _isFileBody = true;
+    _filePath = path;
+    _fileSize = fileSize;
+    body.clear();
+}
+
+bool Response::isFileBody() const
+{
+    return _isFileBody;
+}
+
+const std::string &Response::getFilePath() const
+{
+    return _filePath;
+}
+
+size_t Response::getFileSize() const
+{
+    return _fileSize;
+}
+
+std::string Response::buildHeaderBlock(size_t contentLength) const {
     std::string result;
     result += "HTTP/1.1 ";
     result += intToString(statusCode);
@@ -88,11 +115,21 @@ std::string Response::build() const {
     if (!hasContentType)
         result += std::string("Content-Type: text/plain\r\n");
     if (!hasContentLength)
-        result += std::string("Content-Length: ") + intToString(body.size()) + "\r\n";
+        result += std::string("Content-Length: ") + intToString(contentLength) + "\r\n";
     for (std::vector< std::pair<std::string, std::string> >::const_iterator it = headers.begin(); it != headers.end(); ++it) {
         result += it->first + ": " + it->second + "\r\n";
     }
     result += "\r\n";
-    result += body;
     return result;
+}
+
+std::string Response::build() const {
+    std::string result = buildHeaderBlock(_isFileBody ? _fileSize : body.size());
+    if (!_isFileBody)
+        result += body;
+    return result;
+}
+
+std::string Response::buildHeaders() const {
+    return buildHeaderBlock(_isFileBody ? _fileSize : body.size());
 }
