@@ -1,9 +1,17 @@
 #include "../../includes/Client.hpp"
 #include <unistd.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <limits>
 
 #define BUFFER_SIZE 4096
+#define FILE_CHUNK_SIZE 262144      // 256KB read() size from disk per chunk
+#define SEND_BUDGET_PER_CALL (1024 * 1024) // cap on bytes pushed to the
+                                            // socket per sendData() call,
+                                            // so even on a socket that never
+                                            // pushes back (e.g. loopback)
+                                            // we still yield to poll()
+                                            // regularly for other clients.
 
 Client::Client(int fd, size_t serverIndex)
         : _fd(fd),
@@ -15,6 +23,8 @@ Client::Client(int fd, size_t serverIndex)
             _maxBodySize(std::numeric_limits<size_t>::max()),
             _responseBuffer(""),
             _bytesSent(0),
+            _responseFileFd(-1),
+            _responseFileRemaining(0),
             _hasError(false),
             _errorCode(0),
             _closeAfterResponse(false),
@@ -64,37 +74,116 @@ bool Client::checkRequestComplete()
 
 void Client::setResponse(const std::string &response)
 {
+    closeResponseFile();
     _responseBuffer = response;
     _bytesSent = 0;
 }
 
+bool Client::setResponseHeaderAndFile(const std::string &headerBlock,
+                                       const std::string &filePath,
+                                       size_t fileSize)
+{
+    closeResponseFile();
+
+    _responseBuffer = headerBlock;
+    _bytesSent = 0;
+
+    _responseFileFd = open(filePath.c_str(), O_RDONLY);
+    if (_responseFileFd < 0)
+    {
+        _responseFileRemaining = 0;
+        return false;
+    }
+
+    _responseFileRemaining = fileSize;
+    return true;
+}
+
+void Client::closeResponseFile()
+{
+    if (_responseFileFd >= 0)
+    {
+        close(_responseFileFd);
+        _responseFileFd = -1;
+    }
+    _responseFileRemaining = 0;
+}
+
+bool Client::loadNextFileChunk()
+{
+    if (_responseFileFd < 0)
+        return false;
+
+    if (_responseFileRemaining == 0)
+    {
+        closeResponseFile();
+        return false;
+    }
+
+    char buf[FILE_CHUNK_SIZE];
+    size_t toRead = (_responseFileRemaining < (size_t)FILE_CHUNK_SIZE)
+                        ? _responseFileRemaining
+                        : (size_t)FILE_CHUNK_SIZE;
+
+    ssize_t got = read(_responseFileFd, buf, toRead);
+    if (got <= 0)
+    {
+        // Read error or the file shrank/disappeared mid-stream: stop here,
+        // the client will just see a short body / connection close.
+        closeResponseFile();
+        return false;
+    }
+
+    _responseBuffer.assign(buf, (size_t)got);
+    _bytesSent = 0;
+    _responseFileRemaining -= (size_t)got;
+
+    return true;
+}
+
 ssize_t Client::sendData()
 {
-    if (_responseBuffer.empty())
-        return 0;
+    size_t totalSent = 0;
 
-    ssize_t sent = send(_fd,
-                        _responseBuffer.c_str() + _bytesSent,
-                        _responseBuffer.size() - _bytesSent,
-                        0);
+    while (totalSent < (size_t)SEND_BUDGET_PER_CALL)
+    {
+        if (_bytesSent >= _responseBuffer.size())
+        {
+            if (!loadNextFileChunk())
+                break;         }
 
-    if (sent < 0)
-        return -1;
+        size_t toSend = _responseBuffer.size() - _bytesSent;
+        ssize_t sent = send(_fd, _responseBuffer.c_str() + _bytesSent, toSend, 0);
 
-    _bytesSent += sent;
-    touch();
+        if (sent < 0)
+        {
+            if (totalSent > 0)
+                break;
+            return -1;
+        }
 
-    return sent;
+        _bytesSent += (size_t)sent;
+        totalSent += (size_t)sent;
+        touch();
+
+        if ((size_t)sent < toSend)
+            break; // short write: socket send buffer is full right now,
+                    // stop and let poll() tell us when it's writable again
+    }
+
+    return (ssize_t)totalSent;
 }
 
 bool Client::responseComplete() const
 {
-    return _bytesSent >= _responseBuffer.size();
+    if (_bytesSent < _responseBuffer.size())
+        return false;
+    return _responseFileFd < 0;
 }
 
 bool Client::hasResponse() const
 {
-    return !_responseBuffer.empty();
+    return _bytesSent < _responseBuffer.size() || _responseFileFd >= 0;
 }
 
 void Client::setRequestBuffer(const std::string &buffer)
@@ -167,6 +256,7 @@ bool Client::isIdle(time_t now, int timeoutSec) const
 
 void Client::reset()
 {
+    closeResponseFile();
     _request.clear();
     _responseBuffer.clear();
 
@@ -182,6 +272,7 @@ void Client::reset()
 
 void Client::resetForNextRequest(const std::string &remaining)
 {
+    closeResponseFile();
     _request = remaining;
     _responseBuffer.clear();
     _isComplete = false;
@@ -225,4 +316,7 @@ bool Client::isComplete() const
 }
 
 
-Client::~Client() {}
+Client::~Client()
+{
+    closeResponseFile();
+}

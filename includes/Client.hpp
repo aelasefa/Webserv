@@ -23,10 +23,16 @@ private:
     std::string _responseBuffer;
     size_t _bytesSent;
 
+    int _responseFileFd;
+    size_t _responseFileRemaining;
+
     bool _hasError;
     int _errorCode;
     bool _closeAfterResponse;
     time_t _lastActive;
+
+    void closeResponseFile();
+    bool loadNextFileChunk();
 
 public:
     Client(int fd, size_t serverIndex);
@@ -38,6 +44,9 @@ public:
     bool checkRequestComplete();
 
     void setResponse(const std::string &response);
+    bool setResponseHeaderAndFile(const std::string &headerBlock,
+                                   const std::string &filePath,
+                                   size_t fileSize);
     ssize_t sendData();
     bool responseComplete() const;
     bool hasResponse() const;

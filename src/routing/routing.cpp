@@ -1,4 +1,3 @@
-
 #include "../../includes/Router.hpp"
 #include "../../includes/Utils.hpp"
 #include "../../includes/CGI.hpp"
@@ -180,14 +179,21 @@ Response Router::serveRedirect(int code, const std::string& location)
 Response Router::serveStaticFile(const std::string& path)
 {
     Response response;
-    std::string content = readFile(path);
-    if (content.empty() && !fileExists(path))
-    {
+
+    if (!fileExists(path))
         return serveError(404);
-    }
+
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+        return serveError(404);
+
     response.setStatus(200);
     response.setHeader("Content-Type", getMimeType(path));
-    response.setBody(content);
+    // Don't read the file here: just point the response at it. The actual
+    // bytes are read and sent in small chunks from Client::sendData(),
+    // driven by the poll() loop, so one large file can't block the whole
+    // server while it's being read off disk.
+    response.setFileBody(path, static_cast<size_t>(st.st_size));
     return response;
 }
 
