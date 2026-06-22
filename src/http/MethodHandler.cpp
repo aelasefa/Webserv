@@ -482,7 +482,7 @@ namespace
     {
         DIR *dir = opendir(directoryPath.c_str());
         if (!dir)
-            return serveConfiguredErrorPage(Server(), 500, connection);
+            return buildResponse(500, "Internal Server Error", "text/plain", connection);
 
         std::string normalizedRequest = requestPath;
         if (normalizedRequest.empty())

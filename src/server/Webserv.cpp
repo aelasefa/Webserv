@@ -293,8 +293,8 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
             }
         }
     }
-
-    if (server.client_max_body_size > 0 && req.getBody().size() > static_cast<size_t>(server.client_max_body_size))
+    if (server.client_max_body_size > 0 &&
+        req.getBody().size() > static_cast<size_t>(server.client_max_body_size))
     {
         Response res;
         res.setStatus(413);
@@ -308,9 +308,11 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
     }
     Response res = Router::routeRequest(server, req);
     int code = res.getStatusCode();
-    if (code >= 400)
+    if (code >= 400 && !server.error_pages.empty())
     {
-        res = buildErrorResponse(server, code);
+        Response errorPage = buildErrorResponse(server, code);
+        if (!errorPage.getBody().empty())
+            res.setBody(errorPage.getBody());
     }
     if (newSession) 
     {
@@ -517,47 +519,36 @@ void Webserv::startLoop()
             }
             i++;
         }
-        size_t size = _poll_fds.size();
-        for (size_t i = 0; i < size; i++)
+        for (size_t i = 0; i < _poll_fds.size();)
         {
-            if (_poll_fds[i].revents & (POLLHUP | POLLERR | POLLNVAL))
+            if (_poll_fds[i].revents & (POLLERR | POLLNVAL))
             {
-                if (isServerFd(_poll_fds[i].fd))
-                {
-
-                    std::cerr << "[WARNING] Server socket event error ignored fd="
-                              << _poll_fds[i].fd << std::endl;
-                    continue;
-                }
-
-                removeClientAt(i);
-                i--;
+                if (!isServerFd(_poll_fds[i].fd))
+                    removeClientAt(i);
+                else
+                    i++;
                 continue;
             }
-
             if (_poll_fds[i].revents & POLLIN)
             {
                 if (isServerFd(_poll_fds[i].fd))
-                {
                     handleNewConnection(_poll_fds[i].fd);
-                }
                 else
                 {
-                    int fd_before = _poll_fds[i].fd;
-
+                    size_t old = _poll_fds.size();
                     handleClientRead(i);
-
-                    if (i >= _poll_fds.size())
-                        continue;
-
-                    if (_poll_fds[i].fd != fd_before)
-                        continue;
+                    if (_poll_fds.size() < old)
+                        continue; 
                 }
             }
-            if (_poll_fds[i].revents & POLLOUT)
-            {
+            if (i < _poll_fds.size() && (_poll_fds[i].revents & POLLOUT))
                 handleClientWrite(i);
+            if (i < _poll_fds.size() && (_poll_fds[i].revents & POLLHUP) && !isServerFd(_poll_fds[i].fd))
+            {
+                removeClientAt(i);
+                continue;
             }
+            i++;
         }
     }
 }
