@@ -1,7 +1,9 @@
 #include "../../includes/FileHandler.hpp"
+#include "../../includes/MethodHandler.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include "../../includes/MimeTypes.hpp"
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstdio>
@@ -84,7 +86,11 @@ bool writeAll(int fd, const std::string &body)
     size_t total = 0;
     while (total < body.size())
     {
-        ssize_t written = write(fd, body.data() + total, body.size() - total);
+        ssize_t written;
+        do
+        {
+            written = write(fd, body.data() + total, body.size() - total);
+        } while (written < 0 && errno == EINTR);
         if (written <= 0)
             return false;
         total += (size_t)written;
@@ -140,8 +146,7 @@ Response FileHandler::get(const std::string &fullPath,
 
     std::stringstream buffer;
     buffer << file.rdbuf();
-
-    return buildResponse(200, buffer.str(), "text/plain", connection);
+    return buildResponse(200, buffer.str(), mimeTypeFromPath(fullPath), connection);
 }
 // ================= POST =================
 Response FileHandler::post(const std::string &fullPath,

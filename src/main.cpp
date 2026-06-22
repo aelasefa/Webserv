@@ -1,5 +1,5 @@
 #include <iostream>
-
+#include <signal.h>
 #include "../includes/ConfigParser.hpp"
 #include "../includes/Webserv.hpp"
 
@@ -20,6 +20,7 @@ int main(int argc, char **argv)
     try
     {
         Webserv webserv(config.servers);
+        signal(SIGPIPE, SIG_IGN);
         webserv.initServers();
         webserv.startLoop();
     }

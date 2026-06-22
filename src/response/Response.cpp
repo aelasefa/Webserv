@@ -46,6 +46,7 @@ void Response::setStatus(int status)
         case 404: statusMessage = "Not Found"; break;
         case 405: statusMessage = "Method Not Allowed"; break;
         case 408: statusMessage = "Request Timeout"; break;
+        case 409: statusMessage = "Conflict"; break;
         case 411: statusMessage = "Length Required"; break;
         case 413: statusMessage = "Payload Too Large"; break;
         case 500: statusMessage = "Internal Server Error"; break;
@@ -86,6 +87,10 @@ bool Response::isFileBody() const
 const std::string &Response::getFilePath() const
 {
     return _filePath;
+}
+const std::string &Response::getBody() const
+{
+    return body;
 }
 
 size_t Response::getFileSize() const

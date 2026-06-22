@@ -28,17 +28,13 @@ class Response
         void setHeader(const std::string &key, const std::string &value);
         void setBody(const std::string &content);
 
-        // Marks this response as backed by a file on disk instead of an
-        // in-memory body, so the caller can stream it in bounded chunks
-        // instead of buffering the whole file in RAM.
         void setFileBody(const std::string &path, size_t fileSize);
         bool isFileBody() const;
         const std::string &getFilePath() const;
         size_t getFileSize() const;
+        const std::string &getBody() const;
 
         std::string build() const;
-        // Headers only (no body) - used by the caller when the body will
-        // be streamed separately from a file.
         std::string buildHeaders() const;
 };
     

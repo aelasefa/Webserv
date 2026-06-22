@@ -5,13 +5,8 @@
 #include <limits>
 
 #define BUFFER_SIZE 4096
-#define FILE_CHUNK_SIZE 262144      // 256KB read() size from disk per chunk
-#define SEND_BUDGET_PER_CALL (1024 * 1024) // cap on bytes pushed to the
-                                            // socket per sendData() call,
-                                            // so even on a socket that never
-                                            // pushes back (e.g. loopback)
-                                            // we still yield to poll()
-                                            // regularly for other clients.
+#define FILE_CHUNK_SIZE 262144    
+#define SEND_BUDGET_PER_CALL (1024 * 1024) 
 
 Client::Client(int fd, size_t serverIndex)
         : _fd(fd),
@@ -56,7 +51,7 @@ void Client::appendData(const std::string &buffer)
     if (_hasError)
         return;
 
-    if (_request.size() > _maxBodySize - buffer.size())
+    if (_request.size() + buffer.size() > _maxBodySize)
     {
         setError(413);
         return;
@@ -153,7 +148,7 @@ ssize_t Client::sendData()
                 break;         }
 
         size_t toSend = _responseBuffer.size() - _bytesSent;
-        ssize_t sent = send(_fd, _responseBuffer.c_str() + _bytesSent, toSend, 0);
+        ssize_t sent = send(_fd, _responseBuffer.c_str() + _bytesSent, toSend, MSG_NOSIGNAL);
 
         if (sent < 0)
         {

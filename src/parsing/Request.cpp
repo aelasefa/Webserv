@@ -72,6 +72,8 @@ namespace
         size_t semi = token.find(';');
         if (semi != std::string::npos)
             token = token.substr(0, semi);
+        while (!token.empty() && (token[token.size() - 1] == ' ' || token[token.size() - 1] == '\t'))
+            token.erase(token.size() - 1);
         if (token.empty())
             return false;
 
@@ -246,11 +248,20 @@ bool Request::parseStartLine(std::string &line)
 
 bool Request::parseHeaders(std::string &buffer)
 {
+    static const size_t MAX_HEADER_COUNT = 100;
+    static const size_t MAX_HEADER_LINE = 8192;
+    size_t headerCount = 0;
     while (true)
     {
         size_t pos = buffer.find("\r\n");
         if (pos == std::string::npos)
             return false;
+        if (pos > MAX_HEADER_LINE)
+        {
+            _errorStatus = "431 Request Header Fields Too Large";
+            _state = ERROR;
+            return false;
+        }
 
         std::string line = buffer.substr(0, pos);
         buffer.erase(0, pos + 2);
@@ -327,6 +338,13 @@ bool Request::parseHeaders(std::string &buffer)
             else
                 _state = BODY;
             return true;
+            break;
+        }
+        if (++headerCount > MAX_HEADER_COUNT)
+        {
+            _errorStatus = "431 Request Header Fields Too Large";
+            _state = ERROR;
+            return false;
         }
 
         size_t sep = line.find(":");
