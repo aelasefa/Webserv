@@ -113,7 +113,16 @@ namespace
         addr.sin_port = htons(port);
         std::cout << "[SERVER] Binding to port " << port << std::endl;
         if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0)
-            throw std::runtime_error("bind failed");
+        {
+            std::cerr << "[ERROR] bind failed on port "
+                      << port
+                      << ": "
+                      << strerror(errno)
+                      << std::endl;
+
+            close(server_fd);
+            return -1;
+        }
         std::cout << "[SERVER] Bind successful" << std::endl;
         std::cout << "[SERVER] Listening on port "
           << port << std::endl;
@@ -138,6 +147,8 @@ void Webserv::initServers()
     for (size_t i = 0; i < _servers.size(); i++)
     {
         int server_fd = createServerSocket(_servers[i].listen);
+        if (server_fd == -1)
+            continue;
         addServerToPoll(server_fd);
         _server_fds.push_back(server_fd);
     }
