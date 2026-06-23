@@ -13,6 +13,7 @@ class Client
 private:
     int _fd;
     size_t _serverIndex;
+    bool _peerClosed;
 
     std::string _request;
     bool _isComplete;
@@ -50,6 +51,7 @@ public:
     ssize_t sendData();
     bool responseComplete() const;
     bool hasResponse() const;
+    bool isPeerClosed() const { return _peerClosed; }
 
     void setRequestBuffer(const std::string &buffer);
     bool hasBufferedData() const;
@@ -65,7 +67,6 @@ public:
     void setCloseAfterResponse(bool shouldClose);
     bool shouldCloseAfterResponse() const;
 
-    void touch();
     bool isIdle(time_t now, int timeoutSec) const;
 
     void reset();
@@ -77,6 +78,8 @@ public:
     size_t getBytesSent() const;
     size_t getResponseSize() const;
     bool isComplete() const;
+    time_t getLastActivityTime() const { return _lastActive; }
+    void updateLastActivityTime() { _lastActive = std::time(NULL); }
 };
 
 #endif

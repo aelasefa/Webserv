@@ -26,6 +26,7 @@ Client::Client(int fd, size_t serverIndex)
             _lastActive(std::time(NULL))
 {
         _parser.setMaxBodySize(_maxBodySize);
+        _peerClosed = false;
 }
 
 bool Client::readData()
@@ -39,10 +40,13 @@ bool Client::readData()
     if (bytes < 0)
         return false;
     if (bytes == 0)
-        return false;
+    {
+        _peerClosed = true;
+        return true;
+    }
 
     appendData(std::string(buffer, bytes));
-    touch();
+    _lastActive = std::time(NULL);
     return true;
 }
 
@@ -159,11 +163,10 @@ ssize_t Client::sendData()
 
         _bytesSent += (size_t)sent;
         totalSent += (size_t)sent;
-        touch();
+    _lastActive = std::time(NULL);
 
         if ((size_t)sent < toSend)
-            break; // short write: socket send buffer is full right now,
-                    // stop and let poll() tell us when it's writable again
+            break; 
     }
 
     return (ssize_t)totalSent;
@@ -239,10 +242,6 @@ bool Client::shouldCloseAfterResponse() const
     return _closeAfterResponse;
 }
 
-void Client::touch()
-{
-    _lastActive = std::time(NULL);
-}
 
 bool Client::isIdle(time_t now, int timeoutSec) const
 {

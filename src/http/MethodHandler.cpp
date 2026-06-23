@@ -802,20 +802,25 @@ namespace
 
         return true;
     }
-
-    std::string sanitizeFilename(const std::string &name)
+    static std::string sanitizeFilename(const std::string &raw)
     {
-        std::string cleaned = name;
-        size_t slash = cleaned.find_last_of("/\\");
-        if (slash != std::string::npos)
-            cleaned = cleaned.substr(slash + 1);
-        if (cleaned == "." || cleaned == "..")
+        if (raw.empty())
             return "";
-        if (cleaned.find("..") != std::string::npos)
-            return "";
-        return cleaned;
-    }
 
+        if (raw.find('\0') != std::string::npos || raw.find('/') != std::string::npos || raw.find("..") != std::string::npos)
+            return "";
+
+        size_t start = raw.find_first_not_of(". ");
+        if (start == std::string::npos)
+            return "";
+
+        std::string safe = raw.substr(start);
+
+        if (safe.empty() || safe.find_first_not_of('.') == std::string::npos)
+            return "";
+
+        return safe;
+    }
     Response storeUploadedFile(const std::string &targetDirectory,
                                const std::string &filename,
                                const std::string &contents,
@@ -931,7 +936,13 @@ Response MethodHandler::handle(const Request &req, const Server &server)
     }
 
     if (req.getMethod() != "GET" && req.getMethod() != "POST" && req.getMethod() != "DELETE")
-        return serveConfiguredErrorPage(server, 501, req.getConnectionHeader());
+    {
+        Response res;
+        res.setStatus(405);
+        res.setHeader("Allow", "GET, POST, DELETE");
+        res.setBody("Method Not Allowed");
+        return res;
+    }
 
     if (req.getBody().size() > static_cast<size_t>(server.client_max_body_size))
         return serveConfiguredErrorPage(server, 413, req.getConnectionHeader());

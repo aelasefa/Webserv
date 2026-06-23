@@ -1,1 +1,2 @@
-while(true)
+while True:
+        print()

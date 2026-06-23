@@ -55,18 +55,24 @@ namespace
             boundary = boundary.substr(1, boundary.size() - 2);
         return boundary;
     }
-
-    std::string sanitizeFilename(const std::string &name)
+    std::string sanitizeFilename(const std::string &raw)
     {
-        std::string cleaned = name;
-        size_t slash = cleaned.find_last_of("/\\");
-        if (slash != std::string::npos)
-            cleaned = cleaned.substr(slash + 1);
-        if (cleaned == "." || cleaned == "..")
+        if (raw.empty())
             return "";
-        if (cleaned.find("..") != std::string::npos)
+
+        if (raw.find('\0') != std::string::npos || raw.find('/') != std::string::npos || raw.find("..") != std::string::npos)
             return "";
-        return cleaned;
+
+        size_t start = raw.find_first_not_of(". ");
+        if (start == std::string::npos)
+            return "";
+
+        std::string safe = raw.substr(start);
+
+        if (safe.empty() || safe.find_first_not_of('.') == std::string::npos)
+            return "";
+
+        return safe;
     }
 
     std::string extractFilenameFromHeaders(const std::string &headers)
