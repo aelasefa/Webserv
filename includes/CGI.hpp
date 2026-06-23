@@ -16,6 +16,23 @@
 #include <ctime>
 #define CGI_TIMEOUT 30
 
+struct CGIState {
+    pid_t pid;
+    int outputFd;
+    time_t startTime;
+    std::string result;
+    bool running;
+	int status;
+
+	CGIState() :
+		pid(-1),
+		outputFd(-1),
+		startTime(0),
+		running(false),
+		status(0)
+	{}
+};
+
 class CGI {
 	private:
 		std::string _scriptPath;
@@ -27,7 +44,8 @@ class CGI {
 		void setScriptPath(const std::string& path);
 		void setInterpreter(const std::string& interpreter);
 		std::vector<std::string> setEnv(const Request& request);
-		std::string execute(const Request& request);
+		void start(const Request& request, CGIState& state);
+		bool update(CGIState &state);
 };
 
 class CGIHandler {

@@ -48,79 +48,88 @@ std::vector<std::string> CGI::setEnv(const Request& request) {
     return env;
 }
 
-std::string CGI::execute(const Request& request) {
+void CGI::start(const Request& request, CGIState& state) {
     if (_interpreter.empty() || _scriptPath.empty())
         throw std::runtime_error("interpreter or script path not set");
+    
     int inputPipe[2];
     int outputPipe[2];
+    std::vector<std::string> envStrings = setEnv(request);
+    std::vector<char *> envp;
+    for (size_t i = 0; i < envStrings.size(); i++)
+        envp.push_back(const_cast<char*>(envStrings[i].c_str()));
+    envp.push_back(NULL);
     if (pipe(inputPipe) == -1 || pipe(outputPipe) == -1)
         throw std::runtime_error("pipe failed");
-        
-    pid_t pid = fork();
-    if (pid < 0) {
+    state.pid = fork();
+    if (state.pid == -1) {
         close(inputPipe[0]);
         close(inputPipe[1]);
         close(outputPipe[0]);
         close(outputPipe[1]);
         throw std::runtime_error("fork failed");
     }
-    std::vector<std::string> envStrings = setEnv(request);
-    std::vector<char *> envp;
-    for (size_t i = 0; i < envStrings.size(); i++)
-        envp.push_back(const_cast<char*>(envStrings[i].c_str()));
-    envp.push_back(NULL);
-    if (pid == 0) {
+    if (state.pid == 0) {
         close(inputPipe[1]);
         close(outputPipe[0]);
         dup2(inputPipe[0], STDIN_FILENO);
         dup2(outputPipe[1], STDOUT_FILENO);
         close(inputPipe[0]);
         close(outputPipe[1]);
-        char *argv[] = {
+        char* argv[] = {
             (char *)_interpreter.c_str(),
             (char *)_scriptPath.c_str(),
             NULL
         };
         execve(_interpreter.c_str(), argv, envp.data());
         _exit(1);
-    } else {
-        close(inputPipe[0]);
-        close(outputPipe[1]);
-        write(inputPipe[1], request.getBody().c_str(),
-            request.getBody().size());
-        close(inputPipe[1]);
-        char buffer[1024];
-        std::string result;
-        ssize_t bytes;
-        fcntl(outputPipe[0], F_SETFL, O_NONBLOCK);
-        int status;
-        time_t start_time = time(NULL);
-        while (true) {
-            pid_t proc = waitpid(pid, &status, WNOHANG);
-            time_t elapsed = time(NULL) - start_time;
-            while ((bytes = read(outputPipe[0], buffer, sizeof(buffer))) > 0)
-                result.append(buffer, bytes);
-            if (proc == pid)
-                break;
-            else if (proc == 0) {
-                if (elapsed >= CGI_TIMEOUT) {
-                    kill(pid, SIGKILL);
-                    waitpid(pid, &status, 0);
-                    close(outputPipe[0]);
-                    throw std::runtime_error("CGI timeout");
-                }
-                usleep(10000);
-            }
-            else if (proc == -1) {
-                close(outputPipe[0]);
-                throw std::runtime_error("waitpid failed");
-            }
-        }
-        close(outputPipe[0]);
-        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-            throw std::runtime_error("CGI execution failed");
-        return result;
     }
+    close(inputPipe[0]);
+    close(outputPipe[1]);
+
+    if (request.getMethod() == "POST") {
+        const std::string body = request.getBody();
+        ssize_t total = 0;
+        while (total < body.size()) {
+            ssize_t written = write(inputPipe[1],
+                body.c_str() + total,
+                body.size() - total);
+            if (written <= 0)
+                break;
+            total += written;
+        }
+    }
+    close(inputPipe[1]);
+    state.outputFd = outputPipe[0];
+    state.startTime = time(NULL);
+    state.running = true;
+
+    int flags = fcntl(state.outputFd, F_GETFL, 0);
+    fcntl(state.outputFd, F_SETFL, flags | O_NONBLOCK);
+}
+
+bool CGI::update(CGIState& state) {
+    ssize_t bytes;
+    char buffer[1024];
+    time_t elapsed = time(NULL) - state.startTime;
+    if (elapsed >= CGI_TIMEOUT ) {
+        kill(state.pid, SIGKILL);
+        waitpid(state.pid, NULL, 0);
+        state.running = false;
+        throw std::runtime_error("CGI timeout");
+    }
+
+    while ((bytes = read(state.outputFd, buffer, sizeof(buffer))) > 0)
+        state.result.append(buffer, bytes);
+    pid_t p = waitpid(state.pid, &state.status, WNOHANG);
+    if (p == -1)
+        throw std::runtime_error("waitpid failed");
+    if (p == 0)
+        return false;
+    if (!WIFEXITED(state.status) || WEXITSTATUS(state.status) != 0)
+        throw std::runtime_error("CGI execution failed");
+    state.running = false;
+    return true;
 }
 
 Response CGIHandler::buildResponse(const std::string& cgiOutput)
