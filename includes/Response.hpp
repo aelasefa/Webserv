@@ -10,6 +10,8 @@
 class Response
 {
     private:
+    std::vector<std::string> _cookies;
+
         int statusCode;
         std::string statusMessage;
         std::vector< std::pair<std::string, std::string> > headers;
@@ -27,6 +29,8 @@ class Response
         int getStatusCode() const;
         void setHeader(const std::string &key, const std::string &value);
         void setBody(const std::string &content);
+
+        void addCookie(const std::string &cookie);
 
         void setFileBody(const std::string &path, size_t fileSize);
         bool isFileBody() const;

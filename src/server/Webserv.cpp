@@ -8,7 +8,6 @@
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
-#include <signal.h>
 #include <netinet/in.h>
 #include <stdexcept>
 #include <sys/socket.h>
@@ -254,59 +253,57 @@ Response Webserv::buildErrorResponse(const Server &server, int code)
 
 bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
 {
-    const size_t  si            = client.getServerIndex();
-    const Server &defaultServer = (si < _servers.size()) ? _servers[si] : _servers[0];
-    const Server server        = selectServerByHost(
-        _servers, defaultServer, req.getHeader("Host")
-    );
-
+    const size_t index = client.getServerIndex();
+    const Server &defaultServer = (index < _servers.size()) ? _servers[index] : _servers[0];
+    std::string hostHeader = req.getHeader("Host");
+    const Server &server = selectServerByHost(_servers, defaultServer, hostHeader);
     std::string cookieHeader = req.getHeader("Cookie");
-    std::string sessionId    = Request::getCookieValue(cookieHeader, "session_id");
-    std::string theme        = Request::getCookieValue(cookieHeader, "theme");
+    
 
-    bool newSession       = false;
+    std::string sessionId = Request::getCookieValue(cookieHeader, "session_id");
+    std::string theme      = Request::getCookieValue(cookieHeader, "theme");
+    
+
+    bool newSession = false;
     bool themeCookieNeeded = false;
 
     if (sessionId.empty())
     {
-        static size_t _sessionCounter = 0;
-        sessionId = "id_"
-            + Utils::toString((size_t)std::time(NULL))
-            + "_" + Utils::toString(client.getFd())
-            + "_" + Utils::toString(_sessionCounter++);
-
+        sessionId = "id_" + Utils::toString(std::time(NULL));
         _sessionManager.create(sessionId, "light");
-        theme             = "light";
-        newSession        = true;
-        themeCookieNeeded = true;
-    }
-    else if (!_sessionManager.exists(sessionId))
-    {
-        _sessionManager.create(sessionId, "light");
-        if (theme.empty())
-        {
-            theme             = "light";
-            themeCookieNeeded = true;
-        }
+        theme = "light";
         newSession = true;
+        themeCookieNeeded = true;
     }
     else
     {
-        std::string stored = _sessionManager.getTheme(sessionId);
-        if (stored.empty()) stored = "light";
-
-        if (theme.empty())
+        if (!_sessionManager.exists(sessionId))
         {
-            theme = stored;
-            _sessionManager.setTheme(sessionId, theme);
-            themeCookieNeeded = true;
+            _sessionManager.create(sessionId, "light");
+            if (theme.empty())
+            {
+                theme = "light";
+                themeCookieNeeded = true;
+            }
+            newSession = true;
         }
-        else if (theme != stored)
+        else
         {
-            _sessionManager.setTheme(sessionId, theme);
+            std::string stored = _sessionManager.getTheme(sessionId);
+            if (theme.empty())
+            {
+                if (stored.empty()) stored = "light";
+                theme = stored;
+                _sessionManager.setTheme(sessionId, theme);
+                themeCookieNeeded = true;
+            }
+            else
+            {
+                if (theme != stored)
+                    _sessionManager.setTheme(sessionId, theme);
+            }
         }
     }
-
     if (server.client_max_body_size > 0 &&
         req.getBody().size() > static_cast<size_t>(server.client_max_body_size))
     {
@@ -320,13 +317,8 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
         pfd.events = POLLIN | POLLOUT;
         return true;
     }
-
-    Response res  = Router::routeRequest(server, req);
-    int      code = res.getStatusCode();
-
-    if (req.getMethod() == "HEAD")
-        res.setBody("");
-
+    Response res = Router::routeRequest(server, req);
+    int code = res.getStatusCode();
     if (code >= 400 && !server.error_pages.empty())
     {
         Response errorPage = buildErrorResponse(server, code);
@@ -334,16 +326,15 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
             res.setBody(errorPage.getBody());
     }
 
+
     if (newSession)
-        res.setHeader("Set-Cookie", "session_id=" + sessionId + "; Path=/");
+        res.addCookie("session_id=" + sessionId + "; Path=/");
     if (themeCookieNeeded)
-        res.setHeader("Set-Cookie", "theme=" + theme + "; Path=/");
+        res.addCookie("theme=" + theme + "; Path=/; Max-Age=2592000");
 
     if (res.isFileBody())
     {
-        bool opened = client.setResponseHeaderAndFile(
-            res.buildHeaders(), res.getFilePath(), res.getFileSize()
-        );
+        bool opened = client.setResponseHeaderAndFile(res.buildHeaders(), res.getFilePath(), res.getFileSize());
         client.setCloseAfterResponse(opened ? req.shouldClose() : true);
     }
     else
@@ -372,50 +363,60 @@ void Webserv::handleClientRead(size_t index)
         return;
     }
 
-    const size_t  si     = client.getServerIndex();
-    const Server &server = (si < _servers.size()) ? _servers[si] : _servers[0];
+    const size_t serverIndex = client.getServerIndex();
+    const Server &server =
+        (serverIndex < _servers.size()) ? _servers[serverIndex] : _servers[0];
 
     if (client.hasError())
     {
         int code = client.getErrorCode();
-        client.setResponse(buildErrorResponse(server, code).build());
+
+        client.setResponse(
+            buildErrorResponse(server, code).build()
+        );
+
         client.setCloseAfterResponse(true);
         _poll_fds[index].events = POLLIN | POLLOUT;
         return;
     }
 
-    Request     &req    = client.getParser();
+    if (server.client_max_body_size > 0 &&
+        client.getRequestBuffer().size() > (size_t)server.client_max_body_size)
+    {
+        client.setResponse(
+            buildErrorResponse(server, 413).build()
+        );
+
+        client.setCloseAfterResponse(true);
+        _poll_fds[index].events = POLLIN | POLLOUT;
+        return;
+    }
+
+    Request &req = client.getParser();
     std::string &buffer = client.getRequestBuffer();
 
     bool parsed = req.parse(buffer);
 
     if (!parsed && !req.hasError())
-    {
-        if (client.isPeerClosed())
-        {
-            removeClientAt(index);
-            return;
-        }
-        return; 
-    }
+        return;
 
     if (req.hasError())
     {
         int code = parseStatusCode(req.getErrorStatus());
-        client.setResponse(buildErrorResponse(server, code).build());
+
+        client.setResponse(
+            buildErrorResponse(server, code).build()
+        );
+
         client.setCloseAfterResponse(true);
         _poll_fds[index].events = POLLIN | POLLOUT;
         return;
     }
 
     if (req.isDone())
-    {
-        if (client.isPeerClosed())
-            client.setCloseAfterResponse(true);
-
         processClientRequest(client, req, _poll_fds[index]);
-    }
 }
+
 void Webserv::handleClientWrite(size_t index)
 {
     int fd = _poll_fds[index].fd;
@@ -430,24 +431,16 @@ void Webserv::handleClientWrite(size_t index)
     Client &client = it->second;
 
     if (!client.hasResponse())
-    {
-        _poll_fds[index].events = POLLIN;
         return;
-    }
 
-    ssize_t sent = client.sendData();
-    if (sent < 0)
+    if (client.sendData() < 0)
     {
         removeClientAt(index);
         return;
     }
 
-    if (client.hasResponse())
-    {
-        _poll_fds[index].events = POLLIN | POLLOUT;
+    if (!client.responseComplete())
         return;
-    }
-
 
     if (client.shouldCloseAfterResponse())
     {
@@ -455,20 +448,21 @@ void Webserv::handleClientWrite(size_t index)
         return;
     }
 
-    _poll_fds[index].events = POLLIN;
-
     std::string remaining = client.getRequest();
     client.resetForNextRequest(remaining);
 
     if (!client.hasBufferedData())
+    {
+        _poll_fds[index].events = POLLIN;
         return;
+    }
 
-    Request     &req    = client.getParser();
+    Request &req = client.getParser();
     std::string &buffer = client.getRequestBuffer();
 
     bool parsed = req.parse(buffer);
 
-    if (parsed && req.isDone())
+    if (parsed)
     {
         processClientRequest(client, req, _poll_fds[index]);
         return;
@@ -476,11 +470,18 @@ void Webserv::handleClientWrite(size_t index)
 
     if (req.hasError())
     {
-        const size_t  si     = client.getServerIndex();
-        const Server &server = (si < _servers.size()) ? _servers[si] : _servers[0];
+        const size_t serverIndex = client.getServerIndex();
+        const Server &server =
+            (serverIndex < _servers.size())
+                ? _servers[serverIndex]
+                : _servers[0];
 
         int code = parseStatusCode(req.getErrorStatus());
-        client.setResponse(buildErrorResponse(server, code).build());
+
+        client.setResponse(
+            buildErrorResponse(server, code).build()
+        );
+
         client.setCloseAfterResponse(true);
         _poll_fds[index].events = POLLIN | POLLOUT;
         return;
@@ -500,124 +501,60 @@ void Webserv::setNonBlocking(int fd) {
     }
 }
 
-void Webserv::checkTimeouts()
-{
-    static const time_t IDLE_TIMEOUT_SEC = 60;
-
-    time_t now = std::time(NULL);
-
-    for (size_t i = 0; i < _poll_fds.size(); )
-    {
-        int fd = _poll_fds[i].fd;
-
-        if (isServerFd(fd)) { i++; continue; }
-
-        std::map<int, Client>::iterator it = _clients.find(fd);
-        if (it == _clients.end())
-        {
-            _poll_fds.erase(_poll_fds.begin() + i);
-            continue;
-        }
-
-        Client &client = it->second;
-
-        if (client.hasResponse())
-        {
-            i++; continue;
-        }
-
-        time_t lastActivity = client.getLastActivityTime();
-        if (now - lastActivity > IDLE_TIMEOUT_SEC)
-        {
-            const size_t  si     = client.getServerIndex();
-            const Server &server = (si < _servers.size())
-                ? _servers[si] : _servers[0];
-
-            Response res = buildErrorResponse(server, 408);
-            res.setHeader("Connection", "close");
-            client.setResponse(res.build());
-            client.setCloseAfterResponse(true);
-            _poll_fds[i].events = POLLOUT;
-
-            i++;
-            continue;
-        }
-
-        i++;
-    }
-}
-
 void Webserv::startLoop()
 {
-      signal(SIGPIPE, SIG_IGN);
-
     while (true)
     {
-        int ret = poll(_poll_fds.data(), _poll_fds.size(), 1000);
-
-        if (ret < 0)
+        int poll_ret = poll(&_poll_fds[0], _poll_fds.size(), POLL_TIMEOUT_MS);
+        if (poll_ret < 0)
         {
-            if (errno == EINTR) continue;
             perror("poll");
             break;
         }
 
-        checkTimeouts();  
-
-        if (ret == 0)
-            continue;
-
-        for (size_t i = 0; i < _poll_fds.size(); )
+        time_t now = std::time(NULL);
+        for (size_t i = 0; i < _poll_fds.size();)
         {
-            if (_poll_fds[i].revents == 0) { i++; continue; }
-
-            int fd = _poll_fds[i].fd;
-
+            if (!isServerFd(_poll_fds[i].fd))
+            {
+                std::map<int, Client>::iterator it = _clients.find(_poll_fds[i].fd);
+                if (it != _clients.end() && it->second.isIdle(now, CLIENT_IDLE_TIMEOUT_SEC))
+                {
+                    removeClientAt(i);
+                    continue;
+                }
+            }
+            i++;
+        }
+        for (size_t i = 0; i < _poll_fds.size();)
+        {
             if (_poll_fds[i].revents & (POLLERR | POLLNVAL))
             {
-                if (!isServerFd(fd))
-                    removeClientAt(i);   
+                if (!isServerFd(_poll_fds[i].fd))
+                    removeClientAt(i);
                 else
                     i++;
                 continue;
             }
-
             if (_poll_fds[i].revents & POLLIN)
             {
-                if (isServerFd(fd))
-                {
-                    handleNewConnection(fd);
-                }
+                if (isServerFd(_poll_fds[i].fd))
+                    handleNewConnection(_poll_fds[i].fd);
                 else
                 {
-                    size_t oldSize = _poll_fds.size();
+                    size_t old = _poll_fds.size();
                     handleClientRead(i);
-                    if (_poll_fds.size() < oldSize || _poll_fds[i].fd != fd)
-                        continue;
+                    if (_poll_fds.size() < old)
+                        continue; 
                 }
             }
-
-            if (i < _poll_fds.size()
-                && _poll_fds[i].fd == fd
-                && !isServerFd(fd)
-                && (_poll_fds[i].revents & POLLOUT))
-            {
-                size_t oldSize = _poll_fds.size();
+            if (i < _poll_fds.size() && (_poll_fds[i].revents & POLLOUT))
                 handleClientWrite(i);
-                if (_poll_fds.size() < oldSize ||
-                    (i < _poll_fds.size() && _poll_fds[i].fd != fd))
-                    continue;   
-            }
-
-            if (i < _poll_fds.size()
-                && _poll_fds[i].fd == fd
-                && (_poll_fds[i].revents & POLLHUP)
-                && !isServerFd(fd))
+            if (i < _poll_fds.size() && (_poll_fds[i].revents & POLLHUP) && !isServerFd(_poll_fds[i].fd))
             {
                 removeClientAt(i);
                 continue;
             }
-
             i++;
         }
     }
