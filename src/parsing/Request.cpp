@@ -7,17 +7,54 @@
 
 std::string Request::getCookieValue(const std::string &cookieHeader, const std::string &key)
 {
-    size_t pos = cookieHeader.find(key + "=");
-    if (pos == std::string::npos)
+    if (cookieHeader.empty() || key.empty())
         return "";
-
-    pos += key.size() + 1;
-
-    size_t end = cookieHeader.find(';', pos);
-    if (end == std::string::npos)
-        end = cookieHeader.size();
-
-    return cookieHeader.substr(pos, end - pos);
+ 
+    std::string search = key + "=";
+    size_t pos = 0;
+ 
+    while (pos < cookieHeader.size())
+    {
+        size_t found = cookieHeader.find(search, pos);
+        if (found == std::string::npos)
+            return "";
+ 
+        bool atStart    = (found == 0);
+        bool afterDelim = false;
+ 
+        if (!atStart && found >= 1)
+        {
+            size_t back = found - 1;
+            while (back > 0 && cookieHeader[back] == ' ')
+                --back;
+            if (cookieHeader[back] == ';')
+                afterDelim = true;
+            if (back == 0 && cookieHeader[0] == ';')
+                afterDelim = true;
+        }
+        if (!atStart && found == 1 && cookieHeader[0] == ';')
+            afterDelim = true;
+ 
+        if (atStart || afterDelim)
+        {
+            size_t valStart = found + search.size();
+            size_t end      = cookieHeader.find(';', valStart);
+            if (end == std::string::npos)
+                end = cookieHeader.size();
+ 
+            std::string val = cookieHeader.substr(valStart, end - valStart);
+ 
+            size_t vs = val.find_first_not_of(" \t");
+            if (vs == std::string::npos)
+                return "";
+            size_t ve = val.find_last_not_of(" \t");
+            return val.substr(vs, ve - vs + 1);
+        }
+ 
+        pos = found + 1;
+    }
+ 
+    return "";
 }
 
 Request::Request()

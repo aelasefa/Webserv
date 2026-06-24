@@ -138,6 +138,32 @@ namespace
 Webserv::Webserv(const std::vector<Server> &servers) : _servers(servers) {}
 
 Webserv::~Webserv() {}
+static std::string generateSessionId()
+{
+    unsigned char buf[32];
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd >= 0)
+    {
+        ssize_t got = read(fd, buf, sizeof(buf));
+        close(fd);
+        if (got == static_cast<ssize_t>(sizeof(buf)))
+        {
+            static const char hex[] = "0123456789abcdef";
+            std::string id;
+            id.reserve(64);
+            for (int i = 0; i < 32; ++i)
+            {
+                id += hex[(buf[i] >> 4) & 0xF];
+                id += hex[buf[i] & 0xF];
+            }
+            return id;
+        }
+    }
+    static size_t ctr = 0;
+    std::ostringstream oss;
+    oss << "fb_" << (size_t)std::time(NULL) << "_" << getpid() << "_" << (ctr++);
+    return oss.str();
+}
 
 void Webserv::initServers()
 {
@@ -269,7 +295,7 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
 
     if (sessionId.empty())
     {
-        sessionId = "id_" + Utils::toString(std::time(NULL));
+        sessionId = generateSessionId();        
         _sessionManager.create(sessionId, "light");
         theme = "light";
         newSession = true;
@@ -326,11 +352,10 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
             res.setBody(errorPage.getBody());
     }
 
-
     if (newSession)
-        res.addCookie("session_id=" + sessionId + "; Path=/");
+        res.addCookie("session_id=" + sessionId + "; Path=/; HttpOnly; SameSite=Lax");
     if (themeCookieNeeded)
-        res.addCookie("theme=" + theme + "; Path=/; Max-Age=2592000");
+        res.addCookie("theme=" + theme + "; Path=/; Max-Age=2592000; SameSite=Lax");
 
     if (res.isFileBody())
     {

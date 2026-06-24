@@ -1,3 +1,4 @@
+
 #include "../../includes/Router.hpp"
 #include "../../includes/Utils.hpp"
 #include "../../includes/CGI.hpp"
@@ -55,12 +56,15 @@ namespace
             boundary = boundary.substr(1, boundary.size() - 2);
         return boundary;
     }
+
     std::string sanitizeFilename(const std::string &raw)
     {
         if (raw.empty())
             return "";
 
-        if (raw.find('\0') != std::string::npos || raw.find('/') != std::string::npos || raw.find("..") != std::string::npos)
+        if (raw.find('\0') != std::string::npos ||
+            raw.find('/')  != std::string::npos ||
+            raw.find("..") != std::string::npos)
             return "";
 
         size_t start = raw.find_first_not_of(". ");
@@ -160,6 +164,24 @@ namespace
 
         return true;
     }
+
+    std::string htmlEscape(const std::string &s)
+    {
+        std::string out;
+        out.reserve(s.size());
+        for (size_t i = 0; i < s.size(); ++i)
+        {
+            switch (s[i])
+            {
+                case '&': out += "&amp;";  break;
+                case '<': out += "&lt;";   break;
+                case '>': out += "&gt;";   break;
+                case '"': out += "&quot;"; break;
+                default:  out += s[i];     break;
+            }
+        }
+        return out;
+    }
 }
 
 Response Router::serveError(int code)
@@ -195,70 +217,31 @@ Response Router::serveStaticFile(const std::string& path)
 
     response.setStatus(200);
     response.setHeader("Content-Type", getMimeType(path));
-    // Don't read the file here: just point the response at it. The actual
-    // bytes are read and sent in small chunks from Client::sendData(),
-    // driven by the poll() loop, so one large file can't block the whole
-    // server while it's being read off disk.
     response.setFileBody(path, static_cast<size_t>(st.st_size));
     return response;
 }
 
-Response Router::serveCgi(const Location& location, const Request& request, const std::string& script_path)
+#define CGI_PENDING_STATUS 0
+
+Response Router::serveCgi(const Location &location,
+                          const Request &request,
+                          const std::string &script_path)
 {
-    Response response;
     std::string ext = getExtension(script_path);
-    std::string interpreter = findInterpreter(ext, location.cgi_ext, location.cgi_path);
+    std::string interpreter =
+        findInterpreter(ext, location.cgi_ext, location.cgi_path);
+
     if (interpreter.empty())
-    {
         return serveError(500);
-    }
-    CGI cgi;
-    cgi.setScriptPath(script_path);
-    cgi.setInterpreter(interpreter);
-    std::string cgi_output = cgi.execute(request);
-    if (cgi_output.empty())
-    {
-        return serveError(502);
-    }
-    size_t header_end = cgi_output.find("\r\n\r\n");
-    std::string cgi_body;
-    std::string content_type = "text/html";
-    int status_code = 200;
-    if (header_end != std::string::npos)
-    {
-        std::string headers_part = cgi_output.substr(0, header_end);
-        cgi_body = cgi_output.substr(header_end + 4);
-        std::istringstream iss(headers_part);
-        std::string line;
-        while (std::getline(iss, line))
-        {
-            if (line.empty() || line == "\r")
-                continue;
-            if (line[line.size() - 1] == '\r')
-                line.erase(line.size() - 1);
-            size_t sep = line.find(':');
-            if (sep != std::string::npos)
-            {
-                std::string key = Utils::toLower(Utils::trim(line.substr(0, sep)));
-                std::string value = Utils::trim(line.substr(sep + 1));
-                if (key == "content-type")
-                    content_type = value;
-                else if (key == "status")
-                    status_code = std::atoi(value.c_str());
-            }
-        }
-    }
-    else
-    {
-        cgi_body = cgi_output;
-    }
-    response.setStatus(status_code);
-    response.setHeader("Content-Type", content_type);
-    response.setBody(cgi_body);
-    return response;
+
+    Response pending;
+    pending.setStatus(CGI_PENDING_STATUS);
+    pending.setHeader("X-CGI-Script", script_path);
+    pending.setHeader("X-CGI-Interpreter", interpreter);
+    return pending;
 }
 
-std::string Router::buildPath(const Server& server,const Location& location,const std::string& request_path)
+std::string Router::buildPath(const Server& server, const Location& location, const std::string& request_path)
 {
     std::string root = location.root.empty() ? server.root : location.root;
     std::string path = request_path;
@@ -311,20 +294,20 @@ std::string Router::getMimeType(const std::string& path)
 {
     std::string ext = getExtension(path);
     if (ext == ".html" || ext == ".htm") return "text/html";
-    if (ext == ".css") return "text/css";
-    if (ext == ".js") return "application/javascript";
+    if (ext == ".css")                   return "text/css";
+    if (ext == ".js")                    return "application/javascript";
     if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
-    if (ext == ".png") return "image/png";
-    if (ext == ".gif") return "image/gif";
-    if (ext == ".ico") return "image/x-icon";
-    if (ext == ".svg") return "image/svg+xml";
-    if (ext == ".txt") return "text/plain";
-    if (ext == ".pdf") return "application/pdf";
-    if (ext == ".json") return "application/json";
-    if (ext == ".xml") return "application/xml";
-    if (ext == ".zip") return "application/zip";
-    if (ext == ".mp4") return "video/mp4";
-    if (ext == ".mp3") return "audio/mpeg";
+    if (ext == ".png")                   return "image/png";
+    if (ext == ".gif")                   return "image/gif";
+    if (ext == ".ico")                   return "image/x-icon";
+    if (ext == ".svg")                   return "image/svg+xml";
+    if (ext == ".txt")                   return "text/plain";
+    if (ext == ".pdf")                   return "application/pdf";
+    if (ext == ".json")                  return "application/json";
+    if (ext == ".xml")                   return "application/xml";
+    if (ext == ".zip")                   return "application/zip";
+    if (ext == ".mp4")                   return "video/mp4";
+    if (ext == ".mp3")                   return "audio/mpeg";
     return "application/octet-stream";
 }
 
@@ -350,7 +333,9 @@ bool Router::isCgiExtension(const std::string& ext, const std::vector<std::strin
     return false;
 }
 
-std::string Router::findInterpreter(const std::string& ext, const std::vector<std::string>& cgi_ext, const std::vector<std::string>& cgi_path)
+std::string Router::findInterpreter(const std::string& ext,
+                                    const std::vector<std::string>& cgi_ext,
+                                    const std::vector<std::string>& cgi_path)
 {
     for (size_t i = 0; i < cgi_ext.size() && i < cgi_path.size(); i++)
     {
@@ -370,24 +355,30 @@ std::string Router::readFile(const std::string& path)
     return oss.str();
 }
 
-std::string Router::generateDirectoryListing(const std::string& full_path, const std::string& request_path)
+std::string Router::generateDirectoryListing(const std::string& full_path,
+                                             const std::string& request_path)
 {
     DIR* dir = opendir(full_path.c_str());
     if (!dir)
         return "";
-    std::string html = "<html><head><title>Index of " + request_path + "</title></head><body>\n";
-    html += "<h1>Index of " + request_path + "</h1><hr><pre>\n";
+
+    std::string html = "<html><head><title>Index of " + htmlEscape(request_path)
+                     + "</title></head><body>\n";
+    html += "<h1>Index of " + htmlEscape(request_path) + "</h1><hr><pre>\n";
+
     struct dirent* entry;
     while ((entry = readdir(dir)) != NULL)
     {
         std::string name = entry->d_name;
         if (name == ".")
             continue;
+
         std::string link = request_path;
         if (!link.empty() && link[link.size() - 1] != '/')
             link += "/";
         link += name;
-        html += "<a href=\"" + link + "\">" + name + "</a>\n";
+
+        html += "<a href=\"" + htmlEscape(link) + "\">" + htmlEscape(name) + "</a>\n";
     }
     closedir(dir);
     html += "</pre><hr></body></html>";
@@ -399,19 +390,21 @@ Response Router::routeRequest(const Server& server, Request& request)
     const Location* matched_location = NULL;
     size_t best_match = 0;
     std::string request_path = stripQueryAndFragment(request.getPath());
+
     for (size_t i = 0; i < server.locations.size(); i++)
     {
-        
         const Location& loc = server.locations[i];
         std::string loc_path = loc.path;
-        bool is_exact = false;
+        bool is_exact  = false;
         bool is_prefix = true;
+
         if (!loc_path.empty() && loc_path[0] == '=')
         {
-            is_exact = true;
+            is_exact  = true;
             is_prefix = false;
-            loc_path = Utils::trim(loc_path.substr(1));
+            loc_path  = Utils::trim(loc_path.substr(1));
         }
+
         if (is_exact)
         {
             if (request_path == loc_path && loc_path.size() > best_match)
@@ -429,13 +422,16 @@ Response Router::routeRequest(const Server& server, Request& request)
             }
         }
     }
+
     const Location *location = matched_location;
     if (!location)
         return serveError(404);
+
     int effectiveBodyLimit = server.client_max_body_size;
     if (location && location->client_max_body_size_set)
         effectiveBodyLimit = location->client_max_body_size;
-    if (effectiveBodyLimit > 0 && request.getBody().size() > static_cast<size_t>(effectiveBodyLimit))
+    if (effectiveBodyLimit > 0 &&
+        request.getBody().size() > static_cast<size_t>(effectiveBodyLimit))
         return serveError(413);
 
     if (location && !isMethodAllowed(request.getMethod(), location->methods))
@@ -446,19 +442,7 @@ Response Router::routeRequest(const Server& server, Request& request)
 
     if (request.getMethod() == "POST")
     {
-        bool uploadEnabled = server.upload_enable;
-        std::string uploadPath = server.upload_path;
-
-        if (location && location->upload_enable_set)
-            uploadEnabled = location->upload_enable;
-
-        if (location && location->upload_path_set)
-            uploadPath = location->upload_path;
-
-        if (!uploadEnabled)
-            return serveError(403);
-
-        if (location)
+      if (location)
         {
             std::string full_path = buildPath(server, *location, request_path);
             std::string ext = getExtension(full_path);
@@ -470,6 +454,18 @@ Response Router::routeRequest(const Server& server, Request& request)
                 return serveCgi(*location, request, full_path);
             }
         }
+
+        bool uploadEnabled = server.upload_enable;
+        std::string uploadPath = server.upload_path;
+
+        if (location && location->upload_enable_set)
+            uploadEnabled = location->upload_enable;
+
+        if (location && location->upload_path_set)
+            uploadPath = location->upload_path;
+
+        if (!uploadEnabled)
+            return serveError(403);
 
         if (uploadPath.empty())
             return serveError(403);
@@ -535,6 +531,7 @@ Response Router::routeRequest(const Server& server, Request& request)
             request.getBody(),
             request.getConnectionHeader());
     }
+
     if (request.getMethod() == "DELETE")
     {
         std::string full_path = buildPath(server, *location, request_path);
@@ -543,17 +540,12 @@ Response Router::routeRequest(const Server& server, Request& request)
             full_path,
             request.getConnectionHeader());
     }
-    if (request.getMethod() == "GET")
+
+    if (request.getMethod() == "GET" || request.getMethod() == "HEAD")
     {
         std::string full_path = buildPath(server, *location, request_path);
 
-        if (full_path.find(server.root) != 0)
-        {
-            if (!server.root.empty() && server.root[server.root.size() - 1] != '/')
-                full_path = server.root + "/" + full_path;
-            else
-                full_path = server.root + full_path;
-        }
+
 
         if (!fileExists(full_path))
             return serveError(404);
@@ -595,6 +587,7 @@ Response Router::routeRequest(const Server& server, Request& request)
                 return serveError(403);
             }
         }
+
         std::string ext = getExtension(full_path);
         if (isCgiExtension(ext, location->cgi_ext))
             return serveCgi(*location, request, full_path);

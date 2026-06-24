@@ -9,10 +9,6 @@ void Response::addCookie(const std::string &cookie)
     _cookies.push_back(cookie);
 }
 
-std::string makeSetCookie(const std::string &key, const std::string &value)
-{
-    return key + "=" + value + "; Path=/";
-}
 
 std::string intToString(size_t value)
 {
