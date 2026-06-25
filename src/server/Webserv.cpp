@@ -345,6 +345,37 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
     }
     Response res = Router::routeRequest(server, req);
     int code = res.getStatusCode();
+
+    // ── CGI pending? Start the CGI process and return without a response ──
+    if (code == 0)
+    {
+        std::string scriptPath;
+        std::string interpreter;
+        const std::vector< std::pair<std::string, std::string> > &hdrs = res.getHeaderList();
+        for (size_t h = 0; h < hdrs.size(); ++h)
+        {
+            if (hdrs[h].first == "X-CGI-Script")
+                scriptPath = hdrs[h].second;
+            if (hdrs[h].first == "X-CGI-Interpreter")
+                interpreter = hdrs[h].second;
+        }
+
+        try
+        {
+            client.startCgi(scriptPath, interpreter, req, req.shouldClose());
+            pfd.events = POLLIN;
+            return true;
+        }
+        catch (const std::exception &)
+        {
+            Response errRes = buildErrorResponse(server, 502);
+            client.setResponse(errRes.build());
+            client.setCloseAfterResponse(true);
+            pfd.events = POLLIN | POLLOUT;
+            return true;
+        }
+    }
+
     if (code >= 400 && !server.error_pages.empty())
     {
         Response errorPage = buildErrorResponse(server, code);
@@ -526,6 +557,48 @@ void Webserv::setNonBlocking(int fd) {
     }
 }
 
+void Webserv::pollRunningCgis()
+{
+    for (std::map<int, Client>::iterator it = _clients.begin();
+         it != _clients.end(); ++it)
+    {
+        Client &client = it->second;
+        if (!client.isCgiRunning())
+            continue;
+
+        if (client.updateCgi())
+        {
+            CGIState &state = client.getCgiState();
+            Response res;
+
+            if (state.result.empty())
+            {
+                const size_t idx = client.getServerIndex();
+                const Server &srv = (idx < _servers.size()) ? _servers[idx] : _servers[0];
+                res = buildErrorResponse(srv, 502);
+                client.setCloseAfterResponse(true);
+            }
+            else
+            {
+                res = CGIHandler::buildResponse(state.result);
+                client.setCloseAfterResponse(client.getCgiShouldClose());
+            }
+
+            client.setResponse(res.build());
+            client.clearCgi();
+
+            for (size_t p = 0; p < _poll_fds.size(); ++p)
+            {
+                if (_poll_fds[p].fd == it->first)
+                {
+                    _poll_fds[p].events = POLLIN | POLLOUT;
+                    break;
+                }
+            }
+        }
+    }
+}
+
 void Webserv::startLoop()
 {
     while (true)
@@ -536,8 +609,10 @@ void Webserv::startLoop()
             perror("poll");
             break;
         }
-
         time_t now = std::time(NULL);
+
+        // ── Poll all running CGI processes ──
+        pollRunningCgis();
         for (size_t i = 0; i < _poll_fds.size();)
         {
             if (!isServerFd(_poll_fds[i].fd))

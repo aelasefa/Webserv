@@ -12,6 +12,7 @@
 #include "SessionManager.hpp"
 #include "Request.hpp"
 #include "Response.hpp"
+#include "CGI.hpp"
 
 class Webserv
 {
@@ -29,6 +30,7 @@ private:
     void handleClientRead(size_t index);
     void handleClientWrite(size_t index);
     bool processClientRequest(Client &client, Request &req, pollfd &pfd);
+    void pollRunningCgis();
     bool isServerFd(int fd) const;
     Response buildErrorResponse(const Server &server, int code);
 

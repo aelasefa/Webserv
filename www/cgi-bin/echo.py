@@ -1,68 +1,36 @@
 #!/usr/bin/python3
-import os, sys, html
+import os, sys
 
-method  = os.environ.get("REQUEST_METHOD", "GET").upper()
-query   = os.environ.get("QUERY_STRING", "")
-ctype   = os.environ.get("CONTENT_TYPE", "")
-cookie  = os.environ.get("HTTP_COOKIE", "")
-cl      = os.environ.get("CONTENT_LENGTH", "0")
-ua      = os.environ.get("HTTP_USER_AGENT", "")
-host    = os.environ.get("SERVER_NAME", "")
-port    = os.environ.get("SERVER_PORT", "")
-uri     = os.environ.get("REQUEST_URI", "")
+method = os.environ.get("REQUEST_METHOD", "GET")
+query  = os.environ.get("QUERY_STRING", "")
+clen   = os.environ.get("CONTENT_LENGTH", "0")
 
 body = ""
-if method == "POST":
+if method in ("POST", "PUT"):
     try:
-        length = int(cl)
+        n = int(clen)
     except ValueError:
-        length = 0
-    if length > 0:
-        body = sys.stdin.read(length)
+        n = 0
+    if n > 0:
+        body = sys.stdin.read(n)
 
-env_vars = {k: v for k, v in os.environ.items()}
+http_headers = []
+for k, v in sorted(os.environ.items()):
+    if k.startswith("HTTP_"):
+        http_headers.append("  %s: %s" % (k[5:].replace("_", "-").title(), v))
 
-print("Content-Type: text/html\r\n\r")
-print("""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Echo CGI</title>
-<style>
-  body{font-family:'DM Sans',sans-serif;background:#04080f;color:#e8f0fe;padding:40px;line-height:1.6;}
-  h1{font-size:1.8rem;font-weight:800;margin-bottom:8px;color:#4f8cff;}
-  h2{font-size:1rem;font-weight:700;color:#a78bfa;margin:24px 0 8px;}
-  table{width:100%;border-collapse:collapse;margin-bottom:16px;}
-  td{padding:8px 12px;border-bottom:1px solid rgba(120,180,255,0.1);font-family:monospace;font-size:.85rem;}
-  td:first-child{color:#7a90ab;width:200px;}
-  pre{background:#0a1220;border:1px solid rgba(120,180,255,0.12);border-radius:8px;padding:16px;font-size:.85rem;white-space:pre-wrap;word-break:break-all;}
-  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.75rem;font-weight:700;background:rgba(79,140,255,.15);color:#4f8cff;}
-</style>
-</head>
-<body>
-<h1>⚡ Echo CGI</h1>
-<span class="badge">""" + method + """</span>""")
+out = []
+out.append("=== CGI echo ===")
+out.append("Method : %s" % method)
+out.append("Query  : %s" % (query or "(none)"))
+out.append("Request headers seen by the script:")
+out.extend(http_headers or ["  (none)"])
+out.append("")
+out.append("Body (%s bytes):" % len(body))
+out.append(body if body else "(empty)")
+payload = "\n".join(out) + "\n"
 
-print("<h2>Request Line</h2><table>")
-print(f"<tr><td>METHOD</td><td>{html.escape(method)}</td></tr>")
-print(f"<tr><td>REQUEST_URI</td><td>{html.escape(uri)}</td></tr>")
-print(f"<tr><td>QUERY_STRING</td><td>{html.escape(query) if query else '(empty)'}</td></tr>")
-print(f"<tr><td>CONTENT_TYPE</td><td>{html.escape(ctype) if ctype else '(none)'}</td></tr>")
-print(f"<tr><td>CONTENT_LENGTH</td><td>{html.escape(cl)}</td></tr>")
-print(f"<tr><td>HOST</td><td>{html.escape(host)}:{html.escape(port)}</td></tr>")
-print("</table>")
-
-if cookie:
-    print("<h2>Cookies (HTTP_COOKIE)</h2><pre>" + html.escape(cookie) + "</pre>")
-else:
-    print("<h2>Cookies</h2><pre>(no cookies sent)</pre>")
-
-if body:
-    print("<h2>Request Body</h2><pre>" + html.escape(body) + "</pre>")
-
-print("<h2>All CGI Environment Variables</h2><table>")
-for k in sorted(env_vars.keys()):
-    print(f"<tr><td>{html.escape(k)}</td><td>{html.escape(env_vars[k])}</td></tr>")
-print("</table>")
-
-print("</body></html>")
+sys.stdout.write("Content-Type: text/plain; charset=utf-8\r\n")
+sys.stdout.write("X-CGI-Script: echo.py\r\n")
+sys.stdout.write("\r\n")
+sys.stdout.write(payload)

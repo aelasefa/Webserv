@@ -40,6 +40,8 @@ class Response
 
         std::string build() const;
         std::string buildHeaders() const;
+
+        const std::vector< std::pair<std::string, std::string> > &getHeaderList() const;
 };
     
 std::string intToString(size_t value);
