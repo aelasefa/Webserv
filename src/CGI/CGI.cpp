@@ -39,7 +39,7 @@ std::vector<std::string> CGI::setEnv(const Request& request) {
             if (c == '-')
                 envKey += '_';
             else
-                envKey += std::toupper(c);
+                envKey += std::toupper(static_cast<unsigned char>(c));
         }
         
         env.push_back(envKey + "=" + headerValue);
@@ -89,7 +89,7 @@ void CGI::start(const Request& request, CGIState& state) {
 
     if (request.getMethod() == "POST") {
         const std::string body = request.getBody();
-        ssize_t total = 0;
+        size_t total = 0;
         while (total < body.size()) {
             ssize_t written = write(inputPipe[1],
                 body.c_str() + total,

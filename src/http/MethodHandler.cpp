@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
+#include <unistd.h>
 
 namespace
 {
@@ -606,74 +607,74 @@ namespace
         return !interpreter.empty();
     }
 
-    Response parseCgiOutput(const std::string &output, const std::string &connection)
-    {
-        if (output.empty())
-            return buildResponse(502, "Bad Gateway", "text/plain", connection);
+    // Response parseCgiOutput(const std::string &output, const std::string &connection)
+    // {
+    //     if (output.empty())
+    //         return buildResponse(502, "Bad Gateway", "text/plain", connection);
 
-        size_t headerEnd = output.find("\r\n\r\n");
-        size_t separatorSize = 4;
-        if (headerEnd == std::string::npos)
-        {
-            headerEnd = output.find("\n\n");
-            separatorSize = 2;
-        }
+    //     size_t headerEnd = output.find("\r\n\r\n");
+    //     size_t separatorSize = 4;
+    //     if (headerEnd == std::string::npos)
+    //     {
+    //         headerEnd = output.find("\n\n");
+    //         separatorSize = 2;
+    //     }
 
-        if (headerEnd == std::string::npos)
-            return buildResponse(200, output, "text/plain", connection);
+    //     if (headerEnd == std::string::npos)
+    //         return buildResponse(200, output, "text/plain", connection);
 
-        std::string headerBlock = output.substr(0, headerEnd);
-        std::string body = output.substr(headerEnd + separatorSize);
+    //     std::string headerBlock = output.substr(0, headerEnd);
+    //     std::string body = output.substr(headerEnd + separatorSize);
 
-        int statusCode = 200;
-        std::string contentType = "text/html";
-        std::map<std::string, std::string> headers;
+    //     int statusCode = 200;
+    //     std::string contentType = "text/html";
+    //     std::map<std::string, std::string> headers;
 
-        std::istringstream stream(headerBlock);
-        std::string line;
-        while (std::getline(stream, line))
-        {
-            if (!line.empty() && line[line.size() - 1] == '\r')
-                line.erase(line.size() - 1);
-            if (line.empty())
-                continue;
+    //     std::istringstream stream(headerBlock);
+    //     std::string line;
+    //     while (std::getline(stream, line))
+    //     {
+    //         if (!line.empty() && line[line.size() - 1] == '\r')
+    //             line.erase(line.size() - 1);
+    //         if (line.empty())
+    //             continue;
 
-            size_t colon = line.find(':');
-            if (colon == std::string::npos)
-                continue;
+    //         size_t colon = line.find(':');
+    //         if (colon == std::string::npos)
+    //             continue;
 
-            std::string key = Utils::toLower(Utils::trim(line.substr(0, colon)));
-            std::string value = Utils::trim(line.substr(colon + 1));
-            if (key == "status")
-            {
-                statusCode = parseStatusCode(value);
-                if (statusCode < 100 || statusCode > 599)
-                    statusCode = 500;
-            }
-            else if (key == "content-type")
-            {
-                contentType = value;
-            }
-            else
-            {
-                headers[key] = value;
-            }
-        }
+    //         std::string key = Utils::toLower(Utils::trim(line.substr(0, colon)));
+    //         std::string value = Utils::trim(line.substr(colon + 1));
+    //         if (key == "status")
+    //         {
+    //             statusCode = parseStatusCode(value);
+    //             if (statusCode < 100 || statusCode > 599)
+    //                 statusCode = 500;
+    //         }
+    //         else if (key == "content-type")
+    //         {
+    //             contentType = value;
+    //         }
+    //         else
+    //         {
+    //             headers[key] = value;
+    //         }
+    //     }
 
-        Response response;
-        response.setStatus(statusCode);
-        response.setHeader("Connection", connection);
-        response.setHeader("Content-Type", contentType);
-        for (std::map<std::string, std::string>::const_iterator it = headers.begin(); it != headers.end(); ++it)
-            response.setHeader(it->first, it->second);
-        response.setBody(body);
-        return response;
-    }
+    //     Response response;
+    //     response.setStatus(statusCode);
+    //     response.setHeader("Connection", connection);
+    //     response.setHeader("Content-Type", contentType);
+    //     for (std::map<std::string, std::string>::const_iterator it = headers.begin(); it != headers.end(); ++it)
+    //         response.setHeader(it->first, it->second);
+    //     response.setBody(body);
+    //     return response;
+    // }
 
     Response handleCgi(const Request &req,
-                       const std::string &connection,
-                       const std::string &scriptPath,
-                       const std::string &interpreter)
+                   const std::string &connection,
+                   const std::string &scriptPath,
+                   const std::string &interpreter)
     {
         if (scriptPath.empty())
             return buildResponse(404, "Not Found", "text/plain", connection);
@@ -683,19 +684,34 @@ namespace
             return buildResponse(404, "Not Found", "text/plain", connection);
 
         if (!interpreter.empty() && access(interpreter.c_str(), X_OK) != 0)
-            return buildResponse(500, "Internal Server Error", "text/plain", connection);
+        return buildResponse(500, "Internal Server Error", "text/plain", connection);
 
         try
         {
             CGI cgi;
+            CGIState state;
+
             cgi.setInterpreter(interpreter);
             cgi.setScriptPath(scriptPath);
-            std::string output = cgi.execute(req);
-            return parseCgiOutput(output, connection);
+
+            cgi.start(req, state);
+
+            while (!cgi.update(state))
+                usleep(1000);
+
+            Response response =
+                CGIHandler::buildResponse(state.result);
+
+            response.setHeader("Connection", connection);
+
+            return response;
         }
         catch (const std::exception &)
         {
-            return buildResponse(502, "Bad Gateway", "text/plain", connection);
+            return buildResponse(502,
+                                "Bad Gateway",
+                                "text/plain",
+                                connection);
         }
     }
 

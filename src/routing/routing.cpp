@@ -227,6 +227,7 @@ Response Router::serveCgi(const Location &location,
                           const Request &request,
                           const std::string &script_path)
 {
+    (void)request;
     std::string ext = getExtension(script_path);
     std::string interpreter =
         findInterpreter(ext, location.cgi_ext, location.cgi_path);
