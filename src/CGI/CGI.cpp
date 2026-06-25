@@ -142,8 +142,6 @@ bool CGI::update(CGIState& state) {
 
         if (n > 0)
             state.written += n;
-        else if (errno == EAGAIN || errno == EWOULDBLOCK)
-            break;
         else
             throw std::runtime_error("write failed");
     }
