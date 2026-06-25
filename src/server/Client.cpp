@@ -11,6 +11,7 @@
 Client::Client(int fd, size_t serverIndex)
         : _fd(fd),
             _serverIndex(serverIndex),
+            _peerClosed(false),
             _request(""),
             _isComplete(false),
             _contentLength(0),
@@ -23,10 +24,11 @@ Client::Client(int fd, size_t serverIndex)
             _hasError(false),
             _errorCode(0),
             _closeAfterResponse(false),
-            _lastActive(std::time(NULL))
+            _lastActive(std::time(NULL)),
+            _cgiRunning(false),
+            _cgiShouldClose(false)
 {
         _parser.setMaxBodySize(_maxBodySize);
-        _peerClosed = false;
 }
 
 bool Client::readData()
@@ -251,6 +253,7 @@ bool Client::isIdle(time_t now, int timeoutSec) const
 void Client::reset()
 {
     closeResponseFile();
+    clearCgi();
     _request.clear();
     _responseBuffer.clear();
 
@@ -267,6 +270,7 @@ void Client::reset()
 void Client::resetForNextRequest(const std::string &remaining)
 {
     closeResponseFile();
+    clearCgi();
     _request = remaining;
     _responseBuffer.clear();
     _isComplete = false;
@@ -310,7 +314,70 @@ bool Client::isComplete() const
 }
 
 
+// ---------- CGI integration ----------
+
+void Client::startCgi(const std::string &scriptPath, const std::string &interpreter,
+                      const Request &req, bool shouldClose)
+{
+    _cgi.setScriptPath(scriptPath);
+    _cgi.setInterpreter(interpreter);
+    _cgiState = CGIState();
+    _cgi.start(req, _cgiState);
+    _cgiRunning = true;
+    _cgiShouldClose = shouldClose;
+}
+
+bool Client::isCgiRunning() const
+{
+    return _cgiRunning;
+}
+
+bool Client::updateCgi()
+{
+    if (!_cgiRunning)
+        return true;
+    try
+    {
+        if (_cgi.update(_cgiState))
+        {
+            _cgiRunning = false;
+            return true;
+        }
+        return false;
+    }
+    catch (const std::exception &)
+    {
+        _cgiRunning = false;
+        _cgiState.result.clear();
+        return true;
+    }
+}
+
+CGIState &Client::getCgiState()
+{
+    return _cgiState;
+}
+
+bool Client::getCgiShouldClose() const
+{
+    return _cgiShouldClose;
+}
+
+void Client::clearCgi()
+{
+    if (_cgiRunning && _cgiState.running)
+    {
+        kill(_cgiState.pid, SIGKILL);
+        waitpid(_cgiState.pid, NULL, 0);
+        if (_cgiState.outputFd >= 0)
+            close(_cgiState.outputFd);
+    }
+    _cgiRunning = false;
+    _cgiState = CGIState();
+}
+
 Client::~Client()
 {
+    clearCgi();
     closeResponseFile();
 }

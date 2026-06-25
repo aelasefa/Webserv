@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <ctime>
 #include "Request.hpp"
+#include "CGI.hpp"
 
 
 class Client
@@ -31,6 +32,12 @@ private:
     int _errorCode;
     bool _closeAfterResponse;
     time_t _lastActive;
+
+    // --- CGI state ---
+    bool _cgiRunning;
+    CGI _cgi;
+    CGIState _cgiState;
+    bool _cgiShouldClose;
 
     void closeResponseFile();
     bool loadNextFileChunk();
@@ -80,6 +87,15 @@ public:
     bool isComplete() const;
     time_t getLastActivityTime() const { return _lastActive; }
     void updateLastActivityTime() { _lastActive = std::time(NULL); }
+
+    // --- CGI methods ---
+    void startCgi(const std::string &scriptPath, const std::string &interpreter,
+                  const Request &req, bool shouldClose);
+    bool isCgiRunning() const;
+    bool updateCgi();
+    CGIState &getCgiState();
+    bool getCgiShouldClose() const;
+    void clearCgi();
 };
 
 #endif

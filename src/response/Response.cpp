@@ -23,7 +23,7 @@ Response::Response() : statusCode(200),
 
 void Response::setStatus(int status)
 {
-    if (status < 100 || status > 599)
+    if (status != 0 && (status < 100 || status > 599))
     {
         statusCode = 500;
         statusMessage = "Internal Server Error";
@@ -138,4 +138,9 @@ std::string Response::build() const {
 
 std::string Response::buildHeaders() const {
     return buildHeaderBlock(_isFileBody ? _fileSize : body.size());
+}
+
+const std::vector< std::pair<std::string, std::string> > &Response::getHeaderList() const
+{
+    return headers;
 }
