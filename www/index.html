@@ -1,0 +1,176 @@
+
+<style>
+  :root{
+    --ink:#09090b;--panel:#18181b;--panel2:#27272a;
+    --line:rgba(120,200,255,.12);--line2:rgba(120,200,255,.22);
+    --txt:#e6f0fb;--dim:#7d93ad;--faint:#475569;
+    --cyan:#34d399;--mag:#a78bfa;--amber:#fbbf24;--green:#34d399;--red:#fb7185;
+    --mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(1100px 500px at 80% -10%,rgba(52,211,153,.07),transparent 60%),
+      radial-gradient(900px 600px at -10% 110%,rgba(167,139,250,.06),transparent 60%),
+      var(--ink);
+    color:var(--txt);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;min-height:100vh;
+  }
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header{
+    padding:26px clamp(16px,4vw,48px) 18px;
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
+  }
+  .brand{font-weight:800;font-size:clamp(1.3rem,3.4vw,2rem);letter-spacing:-.5px}
+  .brand b{color:var(--cyan)}
+  .brand .slash{color:var(--mag);margin:0 .35em}
+  .tagline{color:var(--dim);font:.72rem/1.4 var(--mono);letter-spacing:2px;text-transform:uppercase;margin-top:4px}
+
+  .hero{
+    padding:clamp(40px,8vw,80px) clamp(16px,4vw,48px) clamp(32px,6vw,60px);
+    text-align:center;border-bottom:1px solid var(--line);
+  }
+  .team-badge{
+    display:inline-flex;align-items:center;gap:10px;
+    background:rgba(12,19,34,.8);border:1px solid var(--line2);
+    border-radius:40px;padding:6px 18px 6px 10px;margin-bottom:28px;
+    font:.72rem var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--dim);
+  }
+  .team-badge .dots{display:flex;gap:5px}
+  .team-badge .dot{width:8px;height:8px;border-radius:50%}
+  .team-badge .dot.r{background:var(--red);box-shadow:0 0 8px var(--red)}
+  .team-badge .dot.w{background:#e6f0fb}
+
+  .team-name{
+    font-size:clamp(2.2rem,6vw,3.8rem);font-weight:800;letter-spacing:-1.5px;
+    background:linear-gradient(135deg,var(--txt) 0%,var(--cyan) 50%,var(--mag) 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    margin-bottom:12px;line-height:1.1;
+  }
+  .team-sub{color:var(--dim);font:.75rem var(--mono);letter-spacing:2px;text-transform:uppercase}
+
+  .members-grid{
+    display:flex;justify-content:center;gap:clamp(24px,4vw,48px);flex-wrap:wrap;
+    padding:clamp(40px,6vw,64px) clamp(16px,4vw,48px);
+    border-bottom:1px solid var(--line);
+  }
+  .member{
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+    width:180px;
+  }
+  .avatar-wrap{position:relative}
+  .avatar{
+    width:120px;height:120px;border-radius:50%;
+    border:2px solid var(--line2);
+    background:var(--panel);
+    display:grid;place-content:center;
+    font-size:2.6rem;font-weight:800;color:var(--cyan);
+    position:relative;overflow:hidden;
+    transition:border-color .2s,box-shadow .2s;
+  }
+  .avatar img{
+    z-index: 1;
+    width:100%;height:100%;object-fit:cover;border-radius:50%}
+  .member:hover .avatar{border-color:rgba(52,211,153,.5);box-shadow:0 0 24px rgba(52,211,153,.15)}
+  .member-initials{font-family:var(--mono);font-size:2rem;font-weight:700}
+  .avatar-ring{
+    z-index: 0;
+    position:absolute;inset:-4px;border-radius:50%;
+    border:1.5px solid transparent;
+    background:linear-gradient(var(--panel),var(--panel)) padding-box,
+              linear-gradient(135deg,var(--cyan),var(--mag)) border-box;
+    pointer-events:none;opacity:0;transition:opacity .2s;
+  }
+  .member:hover .avatar-ring{opacity:1}
+  .member-name{
+    font-weight:700;font-size:1rem;letter-spacing:-.2px;text-align:center;
+  }
+  .member-handle{
+    font:.68rem var(--mono);color:var(--dim);letter-spacing:1px;text-transform:uppercase;text-align:center;
+  }
+
+  .cta-section{
+    padding:clamp(32px,5vw,56px) clamp(16px,4vw,48px);
+    display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center;
+  }
+  .cta-label{font:.72rem var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--mag)}
+  .cta-title{font-size:clamp(1.2rem,3vw,1.8rem);font-weight:700;letter-spacing:-.3px}
+  .cta-desc{color:var(--dim);font-size:.88rem;max-width:440px}
+  .cta-btn{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:.82rem;font-weight:700;letter-spacing:.5px;
+    color:var(--ink);background:var(--cyan);
+    border:none;border-radius:10px;padding:12px 28px;
+    cursor:pointer;transition:opacity .15s,transform .1s;
+    text-transform:uppercase;
+  }
+  .cta-btn:hover{opacity:.85}
+  .cta-btn:active{transform:translateY(1px)}
+  .cta-btn .arrow{font-size:1.1rem;transition:transform .15s}
+  .cta-btn:hover .arrow{transform:translateX(3px)}
+
+  footer{
+    padding:18px clamp(16px,4vw,48px);
+    color:var(--faint);font:.7rem var(--mono);
+    border-top:1px solid var(--line);text-align:center;
+  }
+</style>
+
+<header>
+  <div>
+    <div class="brand"><b>webserv</b><span class="slash">//</span>home</div>
+    <div class="tagline">42 Network - HTTP/1.1 from scratch</div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="team-badge">
+    <div class="dots"><div class="dot r"></div><div class="dot w"></div></div>
+    team - webserv - 42
+  </div>
+  <div class="team-name">ay&sup2;jr</div>
+  <!-- <div class="team-name">ay²jr</div> -->
+  <div class="team-sub">42 Network - Webserv Project</div>
+</section>
+
+<section class="members-grid">
+  <div class="member">
+    <div class="avatar-wrap">
+        <div class="avatar"> <img src="/assets/ayelasef.jpg" alt="AYMAN ELASEFAR"></div>
+      <div class="avatar-ring"></div>
+    </div>
+    <div class="member-name">AYMAN ELASEFAR</div>
+    <div class="member-handle">ayelasef</div>
+  </div>
+  <div class="member">
+    <div class="avatar-wrap">
+        <div class="avatar"> <img src="/assets/ahabibi-.jpg" alt="Abderrahmane Habibi Ihlane"></div>
+      <div class="avatar-ring" style="background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,var(--mag),var(--amber)) border-box"></div>
+    </div>
+    <div class="member-name">Abderrahmane Habibi Ihlane</div>
+    <div class="member-handle">ahabibi-</div>
+  </div>
+  <div class="member">
+    <div class="avatar-wrap">
+        <div class="avatar"> <img src="/assets/aylaaouf.jpg" alt="Ayoub Laaoufi"></div>
+      <div class="avatar-ring" style="background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,var(--amber),var(--green)) border-box"></div>
+    </div>
+    <div class="member-name">Ayoub Laaoufi</div>
+    <div class="member-handle">aylaaouf</div>
+  </div>
+</section>
+
+<section class="cta-section">
+  <div class="cta-label">protocol console</div>
+  <div class="cta-title">Ready to test the server?</div>
+  <div class="cta-desc">Fire real HTTP/1.1 requests, inspect raw responses, test CGI, uploads, sessions, and error handling - live.</div>
+  <a href="test.html" style="text-decoration:none">
+    <button class="cta-btn">Open test console <span class="arrow">-></span></button>
+  </a>
+</section>
+
+<footer>served by your webserv build - <span style="color:var(--cyan)">Webserv</span> - 42 Network</footer>
