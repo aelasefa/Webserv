@@ -1,0 +1,162 @@
+/* ═══════════════════════════════════════════════════════════
+   ERROR PAGES — error.css
+   Shared styles for all error pages (400–505).
+   ═══════════════════════════════════════════════════════════ */
+
+body.error-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--ink);
+}
+
+/* ── Aurora Background ──────────────────────────────────── */
+.aurora-container {
+  position: absolute;
+  width: 100vw;
+  height: 100vh;
+  top: 0; left: 0;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.blob {
+  position: absolute;
+  filter: blur(80px);
+  opacity: 0.35;
+  border-radius: 50%;
+  animation: float 20s infinite ease-in-out alternate;
+}
+.blob-1 {
+  width: 400px; height: 400px;
+  background: var(--blue);
+  top: -100px; left: -100px;
+  animation-delay: 0s;
+}
+.blob-2 {
+  width: 500px; height: 500px;
+  background: var(--violet);
+  bottom: -200px; right: -100px;
+  animation-delay: -5s;
+}
+.blob-3 {
+  width: 300px; height: 300px;
+  background: var(--pink);
+  top: 30%; left: 40%;
+  animation-delay: -10s;
+}
+
+/* ── Error Card ─────────────────────────────────────────── */
+.error-card {
+  position: relative;
+  z-index: 1;
+  background: rgba(14, 20, 32, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 3rem 4rem;
+  text-align: center;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.8s var(--ease-out) forwards;
+  transform: translateY(40px);
+  opacity: 0;
+  max-width: 90%;
+}
+
+/* Subtle scanline overlay */
+.error-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-xl);
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.006) 2px,
+    rgba(255, 255, 255, 0.006) 4px
+  );
+  pointer-events: none;
+}
+
+/* ── Error Code Typography ──────────────────────────────── */
+.error-code {
+  font-size: clamp(5rem, 12vw, 9rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, var(--text) 0%, var(--violet) 50%, var(--pink) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% 200%;
+  animation: gradientShift 5s ease infinite;
+  filter: drop-shadow(0 4px 20px rgba(139, 92, 246, 0.3));
+}
+
+.error-message {
+  font-size: clamp(1.2rem, 3vw, 1.75rem);
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 2.5rem;
+}
+
+/* ── Return Button ──────────────────────────────────────── */
+.error-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.875rem 2rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  transition: all 0.3s var(--ease-out);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+.error-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--blue), var(--violet));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+}
+.error-btn:hover {
+  transform: translateY(-2px);
+  border-color: transparent;
+  box-shadow: 0 10px 25px -5px rgba(139, 92, 246, 0.4);
+  text-decoration: none;
+  color: var(--text);
+}
+.error-btn:hover::before { opacity: 1; }
+.error-btn:active { transform: translateY(0); }
+
+/* ── Footer ─────────────────────────────────────────────── */
+.error-footer {
+  margin-top: 3rem;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .error-card { padding: 2rem 2rem; }
+}
