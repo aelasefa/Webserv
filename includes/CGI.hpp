@@ -23,13 +23,18 @@ struct CGIState {
     std::string result;
     bool running;
 	int status;
+	int inputFd;
+	size_t written;
+	std::string requestBody;
 
 	CGIState() :
 		pid(-1),
 		outputFd(-1),
 		startTime(0),
 		running(false),
-		status(0)
+		status(0),
+		inputFd(-1),
+		written(0)
 	{}
 };
 

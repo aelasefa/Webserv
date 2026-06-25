@@ -87,25 +87,29 @@ void CGI::start(const Request& request, CGIState& state) {
     close(inputPipe[0]);
     close(outputPipe[1]);
 
-    if (request.getMethod() == "POST") {
-        const std::string body = request.getBody();
-        size_t total = 0;
-        while (total < body.size()) {
-            ssize_t written = write(inputPipe[1],
-                body.c_str() + total,
-                body.size() - total);
-            if (written <= 0)
-                break;
-            total += written;
-        }
-    }
-    close(inputPipe[1]);
+    // if (request.getMethod() == "POST") {
+    //     const std::string body = request.getBody();
+    //     size_t total = 0;
+    //     while (total < body.size()) {
+    //         ssize_t written = write(inputPipe[1],
+    //             body.c_str() + total,
+    //             body.size() - total);
+    //         if (written <= 0)
+    //             break;
+    //         total += written;
+    //     }
+    // }
     state.outputFd = outputPipe[0];
     state.startTime = time(NULL);
     state.running = true;
+    state.inputFd = inputPipe[1];
+    state.requestBody = request.getBody();
+    state.written = 0;
 
     int flags = fcntl(state.outputFd, F_GETFL, 0);
     fcntl(state.outputFd, F_SETFL, flags | O_NONBLOCK);
+    flags = fcntl(state.inputFd, F_GETFL, 0);
+    fcntl(state.inputFd, F_SETFL, flags | O_NONBLOCK);
 }
 
 bool CGI::update(CGIState& state) {
@@ -115,10 +119,41 @@ bool CGI::update(CGIState& state) {
     if (elapsed >= CGI_TIMEOUT ) {
         kill(state.pid, SIGKILL);
         waitpid(state.pid, NULL, 0);
+        if (state.inputFd != -1)
+            close(state.inputFd);
+
+        if (state.outputFd != -1)
+            close(state.outputFd);
         state.running = false;
         throw std::runtime_error("CGI timeout");
     }
 
+    if (state.inputFd != -1)
+    {
+        const std::string& body = state.requestBody;
+
+        while (state.written < body.size())
+        {
+            ssize_t n = write(
+                state.inputFd,
+                body.c_str() + state.written,
+                body.size() - state.written
+        );
+
+        if (n > 0)
+            state.written += n;
+        else if (errno == EAGAIN || errno == EWOULDBLOCK)
+            break;
+        else
+            throw std::runtime_error("write failed");
+    }
+
+    if (state.written == body.size())
+    {
+        close(state.inputFd);
+        state.inputFd = -1;
+    }
+    }
     while ((bytes = read(state.outputFd, buffer, sizeof(buffer))) > 0)
         state.result.append(buffer, bytes);
     pid_t p = waitpid(state.pid, &state.status, WNOHANG);
@@ -127,8 +162,13 @@ bool CGI::update(CGIState& state) {
     if (p == 0)
         return false;
     if (!WIFEXITED(state.status) || WEXITSTATUS(state.status) != 0)
+    {
+        close(state.outputFd);
         throw std::runtime_error("CGI execution failed");
+    }
     state.running = false;
+    close(state.outputFd);
+    state.outputFd = -1;    
     return true;
 }
 
