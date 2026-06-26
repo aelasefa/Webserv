@@ -1,8 +1,4 @@
 #include "../../includes/CGI.hpp"
-// [FIX CRIT-5, CRIT-2] Include StringUtils to replace the intToString free function
-// from Response.hpp, and to use StringUtils::toString which is now properly linked.
-#include "../../includes/StringUtils.hpp"
-#include <cerrno>
 
 CGI::CGI() {}
 
@@ -18,48 +14,44 @@ void CGI::setInterpreter(const std::string& interpreter) {
 
 std::vector<std::string> CGI::setEnv(const Request& request) {
     std::vector<std::string> env;
-    // [FIX CRIT-5] Use StringUtils::toString instead of global intToString.
     env.push_back("REQUEST_METHOD=" + request.getMethod());
     env.push_back("QUERY_STRING=" + request.getQueryString());
-    env.push_back("CONTENT_LENGTH=" + StringUtils::toString(request.getBody().size()));
-    env.push_back("CONTENT_TYPE=" + request.getHeader("content-type"));
+    env.push_back("CONTENT_LENGTH=" + intToString(request.getBody().size()));
+    env.push_back("CONTENT_TYPE=" + request.getHeader("Content-Type"));
     env.push_back("SCRIPT_NAME=" + _scriptPath);
     env.push_back("GATEWAY_INTERFACE=CGI/1.1");
     env.push_back("SCRIPT_FILENAME=" + _scriptPath);
     env.push_back("REDIRECT_STATUS=200");
     env.push_back("SERVER_PROTOCOL=HTTP/1.1");
-
+    
     const std::map<std::string, std::string>& headers = request.getHeaders();
-    for (std::map<std::string, std::string>::const_iterator it = headers.begin();
+    for (std::map<std::string, std::string>::const_iterator it = headers.begin(); 
          it != headers.end(); ++it) {
         std::string headerKey = it->first;
         std::string headerValue = it->second;
-
-        // [FIX LOW-5] Headers map stores keys in lowercase (normalised in Request::parseHeaders).
-        // Old code compared against title-case strings ("Content-Type") which never matched,
-        // causing double-export of these values. Now compare in lowercase.
-        if (headerKey == "content-type" || headerKey == "content-length")
+        
+        if (headerKey == "Content-Type" || headerKey == "Content-Length")
             continue;
-
+        
         std::string envKey = "HTTP_";
         for (size_t i = 0; i < headerKey.length(); ++i) {
             char c = headerKey[i];
             if (c == '-')
                 envKey += '_';
             else
-                envKey += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                envKey += std::toupper(static_cast<unsigned char>(c));
         }
-
+        
         env.push_back(envKey + "=" + headerValue);
     }
-
+    
     return env;
 }
 
 void CGI::start(const Request& request, CGIState& state) {
     if (_interpreter.empty() || _scriptPath.empty())
         throw std::runtime_error("interpreter or script path not set");
-
+    
     int inputPipe[2];
     int outputPipe[2];
     std::vector<std::string> envStrings = setEnv(request);
@@ -95,6 +87,18 @@ void CGI::start(const Request& request, CGIState& state) {
     close(inputPipe[0]);
     close(outputPipe[1]);
 
+    // if (request.getMethod() == "POST") {
+    //     const std::string body = request.getBody();
+    //     size_t total = 0;
+    //     while (total < body.size()) {
+    //         ssize_t written = write(inputPipe[1],
+    //             body.c_str() + total,
+    //             body.size() - total);
+    //         if (written <= 0)
+    //             break;
+    //         total += written;
+    //     }
+    // }
     state.outputFd = outputPipe[0];
     state.startTime = time(NULL);
     state.running = true;
@@ -112,22 +116,18 @@ bool CGI::update(CGIState& state) {
     ssize_t bytes;
     char buffer[1024];
     time_t elapsed = time(NULL) - state.startTime;
-    if (elapsed >= CGI_TIMEOUT) {
+    if (elapsed >= CGI_TIMEOUT ) {
         kill(state.pid, SIGKILL);
         waitpid(state.pid, NULL, 0);
         if (state.inputFd != -1)
             close(state.inputFd);
+
         if (state.outputFd != -1)
             close(state.outputFd);
         state.running = false;
         throw std::runtime_error("CGI timeout");
     }
 
-    // [FIX CRIT-2] Rewritten POST body write to the child's stdin.
-    // Old code threw on ANY non-positive write return, including EAGAIN (pipe buffer full).
-    // With non-blocking pipes this killed CGI on any moderately-sized POST body.
-    // New behaviour: on EAGAIN/EINTR simply return false (try again next poll tick);
-    // on a real write error close the pipe gracefully instead of throwing.
     if (state.inputFd != -1)
     {
         const std::string& body = state.requestBody;
@@ -138,45 +138,27 @@ bool CGI::update(CGIState& state) {
                 state.inputFd,
                 body.c_str() + state.written,
                 body.size() - state.written
-            );
+        );
 
-            if (n > 0)
-            {
-                state.written += static_cast<size_t>(n);
-            }
-            else if (n < 0 && (errno == EAGAIN || errno == EINTR))
-            {
-                // Pipe buffer full or interrupted — come back next tick.
-                return false;
-            }
-            else
-            {
-                // Real write error: close pipe so the child sees EOF on stdin
-                // and the update loop can still collect whatever output it produced.
-                close(state.inputFd);
-                state.inputFd = -1;
-                state.written = body.size(); // skip remaining writes
-                break;
-            }
-        }
-
-        if (state.inputFd != -1 && state.written == body.size())
-        {
-            // All data sent — signal EOF to the child.
-            close(state.inputFd);
-            state.inputFd = -1;
-        }
+        if (n > 0)
+            state.written += n;
+        else
+            throw std::runtime_error("write failed");
     }
 
-    // Drain whatever the child has written so far (non-blocking).
+    if (state.written == body.size())
+    {
+        close(state.inputFd);
+        state.inputFd = -1;
+    }
+    }
     while ((bytes = read(state.outputFd, buffer, sizeof(buffer))) > 0)
         state.result.append(buffer, bytes);
-
     pid_t p = waitpid(state.pid, &state.status, WNOHANG);
     if (p == -1)
         throw std::runtime_error("waitpid failed");
     if (p == 0)
-        return false;   // child still running
+        return false;
     if (!WIFEXITED(state.status) || WEXITSTATUS(state.status) != 0)
     {
         close(state.outputFd);
@@ -184,7 +166,7 @@ bool CGI::update(CGIState& state) {
     }
     state.running = false;
     close(state.outputFd);
-    state.outputFd = -1;
+    state.outputFd = -1;    
     return true;
 }
 
@@ -245,7 +227,6 @@ Response CGIHandler::buildResponse(const std::string& cgiOutput)
         res.setHeader("Content-Type", "text/html");
 
     res.setBody(bodyPart);
-    // [FIX CRIT-5] Use StringUtils::toString instead of the global intToString free function.
-    res.setHeader("Content-Length", StringUtils::toString(bodyPart.size()));
+    res.setHeader("Content-Length", intToString(bodyPart.size()));
     return res;
 }
