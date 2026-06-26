@@ -125,6 +125,11 @@ std::string Response::buildHeaderBlock(size_t contentLength) const {
     for (std::vector< std::pair<std::string, std::string> >::const_iterator it = headers.begin(); it != headers.end(); ++it) {
         result += it->first + ": " + it->second + "\r\n";
     }
+    // [FIX CRIT-COOKIE] Write Set-Cookie headers accumulated by addCookie().
+    // Previously _cookies was populated but never serialized — browsers never
+    // received session or theme cookies, so every request created a new session.
+    for (size_t i = 0; i < _cookies.size(); ++i)
+        result += "Set-Cookie: " + _cookies[i] + "\r\n";
     result += "\r\n";
     return result;
 }
