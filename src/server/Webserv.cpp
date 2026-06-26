@@ -17,9 +17,6 @@
 #include <fstream>
 #include <sstream>
 
-// [FIX CRIT-3] Replaced anonymous namespace with individual static free functions.
-// Anonymous namespace was explicitly forbidden by project constraints. The 'static'
-// keyword provides identical translation-unit-local linkage without using namespaces.
 static const int POLL_TIMEOUT_MS        = 1000;
 static const int CLIENT_IDLE_TIMEOUT_SEC = 60;
 
@@ -92,8 +89,6 @@ static int parseStatusCode(const std::string &status)
     return code;
 }
 
-// [FIX CRIT-3] Removed the duplicate setNonBlocking free function from here.
-// createServerSocket now delegates directly to NetworkUtils::setNonBlocking.
 static int createServerSocket(int port)
 {
     std::cout << "[SERVER] Creating socket..." << std::endl;
@@ -124,7 +119,6 @@ static int createServerSocket(int port)
     if (listen(server_fd, SOMAXCONN) < 0)
         throw std::runtime_error("listen failed");
 
-    // [FIX CRIT-3] Delegate to NetworkUtils instead of a local copy of the logic.
     NetworkUtils::setNonBlocking(server_fd);
 
     return server_fd;
@@ -134,8 +128,6 @@ Webserv::Webserv(const std::vector<Server> &servers) : _servers(servers) {}
 
 Webserv::~Webserv() {}
 
-// [FIX MED-9] Made generateSessionId static to avoid polluting the global linker symbol table.
-// Previously it was a non-static free function visible to every translation unit.
 static std::string generateSessionId()
 {
     unsigned char buf[32];
@@ -157,7 +149,6 @@ static std::string generateSessionId()
             return id;
         }
     }
-    // Fallback: time-based unique ID (not cryptographically safe, used only if /dev/urandom fails)
     static size_t ctr = 0;
     std::ostringstream oss;
     oss << "fb_" << (size_t)std::time(NULL) << "_" << getpid() << "_" << (ctr++);
@@ -190,8 +181,6 @@ void Webserv::addServerToPoll(int server_fd)
 
 void Webserv::addClientToPoll(int fd)
 {
-    // [FIX CRIT-3] Delegate to NetworkUtils::setNonBlocking instead of the
-    // Webserv member or the now-removed anonymous-namespace free function.
     NetworkUtils::setNonBlocking(fd);
 
     pollfd pfd;
@@ -270,7 +259,6 @@ Response Webserv::buildErrorResponse(const Server &server, int code)
     else
     {
         res.setHeader("Content-Type", "text/plain");
-        // [FIX CRIT-1] Use StringUtils::toString instead of the removed Utils::toString.
         res.setBody("Error " + StringUtils::toString(code));
     }
 
@@ -348,7 +336,6 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
 
     int code = res.getStatusCode();
 
-    // ── CGI pending: launch the child process and register the pipe fd ──
     if (code == 0)
     {
         std::string scriptPath;
@@ -378,9 +365,6 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
         }
     }
 
-    // [FIX MED-8] Replace only the body if an error-page file exists.
-    // Old code only copied the body, losing the correct Content-Type header.
-    // Now we replace the full response on 4xx/5xx so headers stay consistent.
     if (code >= 400)
     {
         Response errorPage = buildErrorResponse(server, code);
@@ -535,8 +519,6 @@ void Webserv::handleClientWrite(size_t index)
     _poll_fds[index].events = POLLIN;
 }
 
-// [FIX MED-10] Thin wrapper around NetworkUtils::setNonBlocking.
-// Kept for API compatibility; the actual logic lives in the utility module.
 void Webserv::setNonBlocking(int fd)
 {
     NetworkUtils::setNonBlocking(fd);
@@ -596,10 +578,8 @@ void Webserv::startLoop()
         }
         time_t now = std::time(NULL);
 
-        // Poll all running CGI processes before handling socket events.
         pollRunningCgis();
 
-        // Reap idle clients before iterating events.
         for (size_t i = 0; i < _poll_fds.size();)
         {
             if (!isServerFd(_poll_fds[i].fd))

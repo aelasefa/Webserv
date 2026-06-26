@@ -1,7 +1,4 @@
 #include "../../includes/Request.hpp"
-// [FIX MED-1, MED-2, CRIT-3] Replaced Utils.hpp with specialized headers.
-// StringUtils: trim / split / toLower / isNumeric
-// HttpUtils  : isValidMethod / isValidHttpVersion
 #include "../../includes/StringUtils.hpp"
 #include "../../includes/HttpUtils.hpp"
 #include <sstream>
@@ -100,9 +97,6 @@ void Request::reset()
     _maxBodySize       = std::numeric_limits<size_t>::max();
 }
 
-// [FIX MED-2, CRIT-3] Replaced anonymous namespace with static free functions.
-// 'static' gives the same translation-unit-local linkage without using the
-// namespace keyword which was explicitly forbidden by the project constraints.
 static bool isHexDigit(char c)
 {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
@@ -158,7 +152,6 @@ const std::map<std::string, std::string>& Request::getHeaders() const { return _
 
 std::string Request::getHeader(const std::string& key) const
 {
-    // [FIX MED-1] Use StringUtils::toLower instead of Utils::toLower.
     std::string normalized = StringUtils::toLower(key);
     std::map<std::string, std::string>::const_iterator it = _headers.find(normalized);
     if (it == _headers.end())
@@ -245,7 +238,6 @@ bool Request::parseStartLine(std::string &line)
     if (_path.empty())
         return false;
 
-    // [FIX MED-1] Use HttpUtils:: instead of Utils:: for method/version validation.
     if (!HttpUtils::isValidMethod(_method))
     {
         _errorStatus = "400 Bad Request";
@@ -286,7 +278,6 @@ bool Request::parseHeaders(std::string &buffer)
 
         if (line.empty())
         {
-            // End of headers section.
             if (_hasTransferEncoding && _isChunked)
             {
                 _contentLength    = 0;
@@ -303,7 +294,6 @@ bool Request::parseHeaders(std::string &buffer)
             if (_hasContentLength)
             {
                 std::string cl = _headers["content-length"];
-                // [FIX MED-1] Use StringUtils::isNumeric instead of Utils::isNumeric.
                 if (!StringUtils::isNumeric(cl))
                 {
                     _errorStatus = "400 Bad Request";
@@ -346,7 +336,6 @@ bool Request::parseHeaders(std::string &buffer)
 
             if (_headers.find("connection") != _headers.end())
             {
-                // [FIX MED-1] Use StringUtils::toLower instead of Utils::toLower.
                 std::string conn = StringUtils::toLower(_headers["connection"]);
                 if (conn.find("close") != std::string::npos)
                     _shouldClose = true;
@@ -373,7 +362,6 @@ bool Request::parseHeaders(std::string &buffer)
             return false;
         }
 
-        // [FIX MED-1] Use StringUtils::toLower / StringUtils::trim instead of Utils::.
         std::string key   = StringUtils::toLower(StringUtils::trim(line.substr(0, sep)));
         std::string value = StringUtils::trim(line.substr(sep + 1));
 
@@ -409,14 +397,12 @@ bool Request::parseHeaders(std::string &buffer)
         if (key == "transfer-encoding")
         {
             _hasTransferEncoding = true;
-            // [FIX MED-1] Use StringUtils:: instead of Utils::
             std::string val = StringUtils::toLower(value);
             std::vector<std::string> tokens = StringUtils::split(val, ',');
             bool hasChunked = false;
 
             for (size_t i = 0; i < tokens.size(); i++)
             {
-                // [FIX MED-1] Use StringUtils::trim instead of Utils::trim.
                 std::string token = StringUtils::trim(tokens[i]);
                 if (token.empty() || token == "identity")
                     continue;
@@ -548,7 +534,6 @@ bool Request::parseChunkedBody(std::string &buffer)
                 _state = DONE;
                 return true;
             }
-            // Ignore trailer headers — consume and continue.
         }
         else
         {

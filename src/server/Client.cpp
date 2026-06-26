@@ -57,6 +57,28 @@ void Client::appendData(const std::string &buffer)
     if (_hasError)
         return;
 
+    if (_request.find("\r\n\r\n") == std::string::npos)
+    {
+        std::string combined = _request + buffer;
+        size_t boundary = combined.find("\r\n\r\n");
+        if (boundary == std::string::npos)
+        {
+            if (combined.size() > 8192)
+            {
+                setError(431);
+                return;
+            }
+        }
+        else
+        {
+            if (boundary > 8192)
+            {
+                setError(431);
+                return;
+            }
+        }
+    }
+
     if (_request.size() + buffer.size() > _maxBodySize)
     {
         setError(413);

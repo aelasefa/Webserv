@@ -134,19 +134,22 @@ Response FileHandler::buildResponse(int status,
     resp.setBody(body);
     return resp;
 }
-
 // ================= GET =================
 Response FileHandler::get(const std::string &fullPath,
                           const std::string &connection)
 {
-    std::ifstream file(fullPath.c_str(), std::ios::binary);
-    if (!file.is_open())
+    struct stat st;
+    if (stat(fullPath.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
         return buildResponse(404, "Not Found", "text/plain", connection);
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buildResponse(200, buffer.str(), mimeTypeFromPath(fullPath), connection);
+    Response resp;
+    resp.setStatus(200);
+    resp.setHeader("Content-Type", mimeTypeFromPath(fullPath));
+    resp.setHeader("Connection", connection);
+    resp.setFileBody(fullPath, static_cast<size_t>(st.st_size));
+    return resp;
 }
+
 // ================= POST =================
 Response FileHandler::post(const std::string &fullPath,
                            const std::string &body,
