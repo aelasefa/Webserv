@@ -118,6 +118,7 @@ std::string Response::buildHeaderBlock(size_t contentLength) const {
         if (keyLower == "content-length")
             hasContentLength = true;
     }
+    result += std::string("Server: Webserv/1.1\r\n");
     if (!hasContentType)
         result += std::string("Content-Type: text/plain\r\n");
     if (!hasContentLength)
