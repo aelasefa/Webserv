@@ -1,20 +1,6 @@
 #include "../../includes/Router.hpp"
-// [FIX CRIT-3] Replaced Utils.hpp with StringUtils.hpp (Utils.cpp removed from build).
-#include "../../includes/StringUtils.hpp"
-#include "../../includes/CGI.hpp"
-#include "../../includes/FileHandler.hpp"
-// [FIX MED-5] Include MimeTypes.hpp so getMimeType delegates to the full MIME list.
-#include "../../includes/MimeTypes.hpp"
-#include <sys/stat.h>
-#include <dirent.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <cstdlib>
 
-// [FIX CRIT-3] Replaced anonymous namespace with individual static free functions.
-// 'static' gives internal linkage (same effect as anonymous namespace) without using
-// the namespace keyword which was explicitly disallowed by the project constraints.
+
 
 static std::string stripQueryAndFragment(const std::string &path)
 {
@@ -42,7 +28,6 @@ static std::string baseName(const std::string &path)
 
 static std::string extractBoundary(const std::string &contentType)
 {
-    // [FIX CRIT-3] Use StringUtils:: instead of Utils::
     std::string lower = StringUtils::toLower(contentType);
     size_t formPos = lower.find("multipart/form-data");
     if (formPos == std::string::npos)
@@ -97,7 +82,6 @@ static std::string extractFilenameFromHeaders(const std::string &headers)
         if (sep == std::string::npos)
             continue;
 
-        // [FIX CRIT-3] Use StringUtils:: instead of Utils::
         std::string key   = StringUtils::toLower(StringUtils::trim(line.substr(0, sep)));
         std::string value = StringUtils::trim(line.substr(sep + 1));
 
@@ -171,7 +155,6 @@ static bool extractMultipartFiles(const std::string &body, const std::string &bo
     return true;
 }
 
-// HTML-escape helper for directory listings.
 static std::string htmlEscape(const std::string &s)
 {
     std::string out;
@@ -190,14 +173,12 @@ static std::string htmlEscape(const std::string &s)
     return out;
 }
 
-// ─── Router member implementations ───────────────────────────────────────────
 
 Response Router::serveError(int code)
 {
     Response response;
     response.setStatus(code);
     response.setHeader("Content-Type", "text/html");
-    // [FIX CRIT-3] Use StringUtils::toString instead of Utils::toString.
     std::string body = "<html><body><h1>" + StringUtils::toString(code)
                      + " Error</h1></body></html>";
     response.setBody(body);
@@ -226,7 +207,6 @@ Response Router::serveStaticFile(const std::string& path)
         return serveError(404);
 
     response.setStatus(200);
-    // [FIX MED-5] getMimeType now calls mimeTypeFromPath which uses the full list.
     response.setHeader("Content-Type", getMimeType(path));
     response.setFileBody(path, static_cast<size_t>(st.st_size));
     return response;
@@ -301,9 +281,6 @@ std::string Router::getExtension(const std::string& path)
     return path.substr(dot);
 }
 
-// [FIX MED-5] Delegate to mimeTypeFromPath (MimeTypes.cpp full list) instead of
-// a short local 15-entry table. Previously only 15 types were matched here vs. the
-// full list in MimeTypes.cpp, causing inconsistent MIME types for static files.
 std::string Router::getMimeType(const std::string& path)
 {
     return mimeTypeFromPath(path);
@@ -402,7 +379,6 @@ Response Router::routeRequest(const Server& server, Request& request)
         {
             is_exact  = true;
             is_prefix = false;
-            // [FIX CRIT-3] Use StringUtils::trim instead of Utils::trim.
             loc_path  = StringUtils::trim(loc_path.substr(1));
         }
 
@@ -528,9 +504,6 @@ Response Router::routeRequest(const Server& server, Request& request)
         return FileHandler::del(full_path, request.getConnectionHeader());
     }
 
-    // [FIX HIGH-6] HEAD is handled identically to GET here so it produces the
-    // correct headers. The response body is stripped in processClientRequest after
-    // routing returns, keeping this function's logic simple.
     if (request.getMethod() == "GET")
     {
         std::string full_path = buildPath(server, *location, request_path);

@@ -2,7 +2,7 @@
 #define CONFIGPARSER_HPP
 
 #include "Config.hpp"
-
+#include "Router.hpp"
 
 class ConfigParser {
     private:

@@ -1,5 +1,6 @@
 
 #include "../../includes/ConfigParser.hpp"
+#include "../../includes/Utils.hpp"
 
 Location::Location() {
     path = "";
@@ -94,9 +95,19 @@ void Server::reset() {
 }
 
 
-bool ConfigParser::is_server_line(const std::string& line) {
-    return (line.find("server") != std::string::npos && 
-            line.find("{") != std::string::npos);
+bool ConfigParser::is_server_line(const std::string& line)
+{
+    std::string trimmed = StringUtils::trim(line);
+
+    if (trimmed.compare(0, 6, "server") != 0)
+        return false;
+
+    if (trimmed.size() > 6 &&
+        !std::isspace(trimmed[6]) &&
+        trimmed[6] != '{')
+        return false;
+
+    return trimmed.find('{') != std::string::npos;
 }
 
 bool ConfigParser::is_location_line(const std::string& line) {

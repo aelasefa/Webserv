@@ -1,6 +1,17 @@
 #ifndef ROUTER_HPP
 #define ROUTER_HPP
 
+#include "StringUtils.hpp"
+#include "CGI.hpp"
+#include "FileHandler.hpp"
+#include "MimeTypes.hpp"
+#include <sys/stat.h>
+#include <dirent.h>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <cstdlib>
+#include "Utils.hpp"
 #include "Server.hpp"
 #include "Location.hpp"
 #include "Request.hpp"
