@@ -1,5 +1,4 @@
 #include "../../includes/FileHandler.hpp"
-#include "../../includes/MethodHandler.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
