@@ -1,4 +1,31 @@
-<video autoplay muted loop playsinline width="300">
-    <source src="/vedio.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-</video>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading Video</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        video {
+            width: 300px;
+            max-width: 90%;
+        }
+    </style>
+</head>
+<body>
+
+    <video autoplay muted loop playsinline>
+        <source src="/vedio.mp4" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+
+</body>
+</html>
