@@ -22,12 +22,15 @@ class Response
         bool _isFileBody;
         std::string _filePath;
         size_t _fileSize;
+        std::string _connection;
 
         std::string buildHeaderBlock(size_t contentLength) const;
 
     public:
         Response();
         void setStatus(int status);
+        void setConnection(const std::string &connection);
+        const std::string &getConnection() const;
         int getStatusCode() const;
         void setHeader(const std::string &key, const std::string &value);
         void setBody(const std::string &content);

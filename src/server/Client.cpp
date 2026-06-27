@@ -387,12 +387,18 @@ bool Client::getCgiShouldClose() const
 
 void Client::clearCgi()
 {
-    if (_cgiRunning && _cgiState.running)
+    if (_cgiState.pid >= 0)
     {
         kill(_cgiState.pid, SIGKILL);
         waitpid(_cgiState.pid, NULL, 0);
-        if (_cgiState.outputFd >= 0)
-            close(_cgiState.outputFd);
+    }
+    if (_cgiState.outputFd >= 0)
+    {
+        close(_cgiState.outputFd);
+    }
+    if (_cgiState.inputFd >= 0)
+    {
+        close(_cgiState.inputFd);
     }
     _cgiRunning = false;
     _cgiState = CGIState();

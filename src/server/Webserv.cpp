@@ -235,7 +235,7 @@ Response Webserv::buildErrorResponse(const Server &server, int code)
 {
     Response res;
     res.setStatus(code);
-    res.setHeader("Connection", "close");
+    res.setConnection("close");
 
     std::map<int, std::string>::const_iterator it = server.error_pages.find(code);
 
@@ -377,16 +377,38 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
     if (themeCookieNeeded)
         res.addCookie("theme=" + theme + "; Path=/; Max-Age=2592000; SameSite=Lax");
 
+    bool responseWantsClose = false;
+    const std::vector< std::pair<std::string, std::string> > &hdrs = res.getHeaderList();
+    for (size_t h = 0; h < hdrs.size(); ++h)
+    {
+        std::string keyLower = hdrs[h].first;
+        for (size_t i = 0; i < keyLower.size(); ++i)
+            keyLower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(keyLower[i])));
+        if (keyLower == "connection")
+        {
+            std::string valLower = hdrs[h].second;
+            for (size_t i = 0; i < valLower.size(); ++i)
+                valLower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(valLower[i])));
+            if (valLower.find("close") != std::string::npos)
+                responseWantsClose = true;
+        }
+    }
+    if (res.getConnection() == "close")
+        responseWantsClose = true;
+
+    bool finalShouldClose = req.shouldClose() || responseWantsClose;
+    res.setConnection(finalShouldClose ? "close" : "keep-alive");
+
     if (res.isFileBody())
     {
         bool opened = client.setResponseHeaderAndFile(
             res.buildHeaders(), res.getFilePath(), res.getFileSize());
-        client.setCloseAfterResponse(opened ? req.shouldClose() : true);
+        client.setCloseAfterResponse(opened ? finalShouldClose : true);
     }
     else
     {
         client.setResponse(res.build());
-        client.setCloseAfterResponse(req.shouldClose());
+        client.setCloseAfterResponse(finalShouldClose);
     }
 
     pfd.events = POLLIN | POLLOUT;
@@ -548,7 +570,28 @@ void Webserv::pollRunningCgis()
             else
             {
                 res = CGIHandler::buildResponse(state.result);
-                client.setCloseAfterResponse(client.getCgiShouldClose());
+                bool responseWantsClose = false;
+                const std::vector< std::pair<std::string, std::string> > &hdrs = res.getHeaderList();
+                for (size_t h = 0; h < hdrs.size(); ++h)
+                {
+                    std::string keyLower = hdrs[h].first;
+                    for (size_t i = 0; i < keyLower.size(); ++i)
+                        keyLower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(keyLower[i])));
+                    if (keyLower == "connection")
+                    {
+                        std::string valLower = hdrs[h].second;
+                        for (size_t i = 0; i < valLower.size(); ++i)
+                            valLower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(valLower[i])));
+                        if (valLower.find("close") != std::string::npos)
+                            responseWantsClose = true;
+                    }
+                }
+                if (res.getConnection() == "close")
+                    responseWantsClose = true;
+
+                bool finalShouldClose = client.getCgiShouldClose() || responseWantsClose;
+                res.setConnection(finalShouldClose ? "close" : "keep-alive");
+                client.setCloseAfterResponse(finalShouldClose);
             }
 
             client.setResponse(res.build());

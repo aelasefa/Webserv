@@ -19,7 +19,27 @@ std::string intToString(size_t value)
 
 Response::Response() : statusCode(200),
         statusMessage("OK"), body(""),
-        _isFileBody(false), _filePath(""), _fileSize(0) {}
+        _isFileBody(false), _filePath(""), _fileSize(0), _connection("keep-alive") {}
+
+void Response::setConnection(const std::string &connection)
+{
+    _connection = connection;
+    for (std::vector< std::pair<std::string, std::string> >::iterator it = headers.begin(); it != headers.end(); )
+    {
+        std::string keyLower = it->first;
+        for (size_t i = 0; i < keyLower.size(); ++i)
+            keyLower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(keyLower[i])));
+        if (keyLower == "connection")
+            it = headers.erase(it);
+        else
+            ++it;
+    }
+}
+
+const std::string &Response::getConnection() const
+{
+    return _connection;
+}
 
 void Response::setStatus(int status)
 {
@@ -108,6 +128,7 @@ std::string Response::buildHeaderBlock(size_t contentLength) const {
     result += "\r\n";
     bool hasContentType = false;
     bool hasContentLength = false;
+    bool hasConnection = false;
     for (std::vector< std::pair<std::string, std::string> >::const_iterator it = headers.begin(); it != headers.end(); ++it)
     {
         std::string keyLower = it->first;
@@ -117,15 +138,20 @@ std::string Response::buildHeaderBlock(size_t contentLength) const {
             hasContentType = true;
         if (keyLower == "content-length")
             hasContentLength = true;
+        if (keyLower == "connection")
+            hasConnection = true;
     }
     result += std::string("Server: Webserv/1.1\r\n");
     if (!hasContentType)
         result += std::string("Content-Type: text/plain\r\n");
     if (!hasContentLength)
         result += std::string("Content-Length: ") + intToString(contentLength) + "\r\n";
+    if (!hasConnection)
+        result += std::string("Connection: ") + _connection + "\r\n";
     for (std::vector< std::pair<std::string, std::string> >::const_iterator it = headers.begin(); it != headers.end(); ++it) {
         result += it->first + ": " + it->second + "\r\n";
     }
+    result += std::string("Server: Webserv/1.1\r\n");
     // [FIX CRIT-COOKIE] Write Set-Cookie headers accumulated by addCookie().
     // Previously _cookies was populated but never serialized — browsers never
     // received session or theme cookies, so every request created a new session.
