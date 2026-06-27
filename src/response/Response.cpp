@@ -152,9 +152,6 @@ std::string Response::buildHeaderBlock(size_t contentLength) const {
         result += it->first + ": " + it->second + "\r\n";
     }
     result += std::string("Server: Webserv/1.1\r\n");
-    // [FIX CRIT-COOKIE] Write Set-Cookie headers accumulated by addCookie().
-    // Previously _cookies was populated but never serialized — browsers never
-    // received session or theme cookies, so every request created a new session.
     for (size_t i = 0; i < _cookies.size(); ++i)
         result += "Set-Cookie: " + _cookies[i] + "\r\n";
     result += "\r\n";

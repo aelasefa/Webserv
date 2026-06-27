@@ -151,8 +151,6 @@ bool Client::loadNextFileChunk()
     ssize_t got = read(_responseFileFd, buf, toRead);
     if (got <= 0)
     {
-        // Read error or the file shrank/disappeared mid-stream: stop here,
-        // the client will just see a short body / connection close.
         closeResponseFile();
         return false;
     }

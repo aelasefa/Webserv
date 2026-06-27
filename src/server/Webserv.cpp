@@ -2,7 +2,6 @@
 #include "../../includes/Router.hpp"
 #include "../../includes/Request.hpp"
 #include "../../includes/Response.hpp"
-// [FIX CRIT-3] Replaced Utils.hpp (removed from build) with specialized headers.
 #include "../../includes/StringUtils.hpp"
 #include "../../includes/NetworkUtils.hpp"
 #include <cstdio>
