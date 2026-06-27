@@ -5,15 +5,13 @@
 
 int main(int argc, char **argv)
 {
-    if (argc > 2)
+    if (argc != 2)
     {
         std::cerr << "Usage: ./webserv <config_file>\n";
         return 1;
     }
 
-    std::string configPath = "conf/Default.conf";
-    if (argc == 2)
-        configPath = argv[1];
+    std::string configPath = argv[1];
 
     ConfigParser parser;
     Config config = parser.parse(configPath);
