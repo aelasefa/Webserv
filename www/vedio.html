@@ -1,31 +1,59 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Loading Video</title>
-    <style>
-        body {
-            margin: 0;
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-
-        video {
-            width: 300px;
-            max-width: 90%;
-        }
-    </style>
+     <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Webserv Command Deck // Telemetry Stream</title>
+  <link rel="stylesheet" href="/assets/css/shared.css">
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: var(--bg-base);
+      padding: 24px;
+    }
+    .video-viewport {
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 30px;
+      text-align: center;
+      box-shadow: var(--shadow-lg);
+      max-width: 600px;
+      width: 100%;
+      animation: fadeInUp 0.6s var(--ease-out) both;
+    }
+    video {
+      width: 100%;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .meta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
 </head>
-<body>
-
-    <video autoplay muted loop playsinline>
-        <source src="/vedio.mp4" type="video/mp4">
-        Your browser does not support the video tag.
-    </video>
-
+<body class="bg-mesh"><div class="video-viewport">
+  <video autoplay muted loop playsinline controls>
+    <source src="/vedio.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>
+  <div class="meta">
+    <span>stream_feed: online</span>
+    <a href="/test.html" style="color:var(--cyan);">← return to console</a>
+  </div>
+</div>
 </body>
 </html>
