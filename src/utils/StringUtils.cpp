@@ -1,6 +1,7 @@
 #include "../../includes/StringUtils.hpp"
 #include <cctype>
 #include <sstream>
+#include <cstdlib>
 
 std::string StringUtils::trim(const std::string &str)
 {
@@ -70,4 +71,30 @@ std::string StringUtils::htmlEscape(const std::string &str)
         }
     }
     return out;
+}
+
+std::string StringUtils::urlDecode(const std::string &str)
+{
+    std::string res;
+    res.reserve(str.size());
+    for (size_t i = 0; i < str.size(); ++i)
+    {
+        if (str[i] == '%' && i + 2 < str.size() &&
+            std::isxdigit(str[i + 1]) && std::isxdigit(str[i + 2]))
+        {
+            std::string hex = str.substr(i + 1, 2);
+            char c = static_cast<char>(strtol(hex.c_str(), NULL, 16));
+            res += c;
+            i += 2;
+        }
+        else if (str[i] == '+')
+        {
+            res += ' ';
+        }
+        else
+        {
+            res += str[i];
+        }
+    }
+    return res;
 }

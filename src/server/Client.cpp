@@ -44,7 +44,7 @@ bool Client::readData()
     if (bytes == 0)
     {
         _peerClosed = true;
-        return true;
+        return false;
     }
 
     appendData(std::string(buffer, bytes));
@@ -79,10 +79,37 @@ void Client::appendData(const std::string &buffer)
         }
     }
 
-    if (_request.size() + buffer.size() > _maxBodySize)
+    size_t boundary = _request.find("\r\n\r\n");
+    if (boundary != std::string::npos)
     {
-        setError(413);
-        return;
+        size_t currentBodySize = _request.size() - (boundary + 4);
+        if (currentBodySize + buffer.size() > _maxBodySize)
+        {
+            setError(413);
+            return;
+        }
+    }
+    else
+    {
+        std::string combined = _request + buffer;
+        size_t newBoundary = combined.find("\r\n\r\n");
+        if (newBoundary != std::string::npos)
+        {
+            size_t bodySize = combined.size() - (newBoundary + 4);
+            if (bodySize > _maxBodySize)
+            {
+                setError(413);
+                return;
+            }
+        }
+        else
+        {
+            if (combined.size() > _maxBodySize + 8192)
+            {
+                setError(413);
+                return;
+            }
+        }
     }
     _request += buffer;
 }
@@ -337,12 +364,12 @@ bool Client::isComplete() const
 // ---------- CGI integration ----------
 
 void Client::startCgi(const std::string &scriptPath, const std::string &interpreter,
-                      const Request &req, bool shouldClose)
+                      const Request &req, bool shouldClose, const Server &server)
 {
     _cgi.setScriptPath(scriptPath);
     _cgi.setInterpreter(interpreter);
     _cgiState = CGIState();
-    _cgi.start(req, _cgiState);
+    _cgi.start(req, _cgiState, server);
     _cgiRunning = true;
     _cgiShouldClose = shouldClose;
 }

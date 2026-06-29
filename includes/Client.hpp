@@ -9,6 +9,8 @@
 #include "CGI.hpp"
 
 
+class Server;
+
 class Client
 {
 private:
@@ -90,7 +92,7 @@ public:
 
     // --- CGI methods ---
     void startCgi(const std::string &scriptPath, const std::string &interpreter,
-                  const Request &req, bool shouldClose);
+                  const Request &req, bool shouldClose, const Server &server);
     bool isCgiRunning() const;
     bool updateCgi();
     CGIState &getCgiState();

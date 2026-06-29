@@ -226,12 +226,12 @@ bool Request::parseStartLine(std::string &line)
     size_t queryPos = rawPath.find('?');
     if (queryPos == std::string::npos)
     {
-        _path = rawPath;
+        _path = StringUtils::urlDecode(rawPath);
         _queryString.clear();
     }
     else
     {
-        _path        = rawPath.substr(0, queryPos);
+        _path        = StringUtils::urlDecode(rawPath.substr(0, queryPos));
         _queryString = rawPath.substr(queryPos + 1);
     }
 

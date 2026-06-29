@@ -85,11 +85,7 @@ bool writeAll(int fd, const std::string &body)
     size_t total = 0;
     while (total < body.size())
     {
-        ssize_t written;
-        do
-        {
-            written = write(fd, body.data() + total, body.size() - total);
-        } while (written < 0 && errno == EINTR);
+        ssize_t written = write(fd, body.data() + total, body.size() - total);
         if (written <= 0)
             return false;
         total += (size_t)written;
@@ -215,5 +211,5 @@ Response FileHandler::del(const std::string &fullPath,
     if (std::remove(fullPath.c_str()) != 0)
         return buildResponse(500, "Delete failed", "text/plain", connection);
 
-    return buildResponse(200, "Deleted", "text/plain", connection);
+    return buildResponse(204, "", "text/plain", connection);
 }

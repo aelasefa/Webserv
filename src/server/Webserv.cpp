@@ -350,7 +350,7 @@ bool Webserv::processClientRequest(Client &client, Request &req, pollfd &pfd)
 
         try
         {
-            client.startCgi(scriptPath, interpreter, req, req.shouldClose());
+            client.startCgi(scriptPath, interpreter, req, req.shouldClose(), server);
             pfd.events = POLLIN;
             return true;
         }
@@ -429,6 +429,9 @@ void Webserv::handleClientRead(size_t index)
         removeClientAt(index);
         return;
     }
+
+    if (client.hasResponse())
+        return;
 
     const size_t serverIndex = client.getServerIndex();
     const Server &server =
@@ -617,13 +620,19 @@ void Webserv::pollRunningCgis()
 
 void Webserv::startLoop()
 {
+    if (_poll_fds.empty())
+        throw std::runtime_error("no server socket could be bound");
+
     while (true)
     {
         int poll_ret = poll(&_poll_fds[0], _poll_fds.size(), POLL_TIMEOUT_MS);
         if (poll_ret < 0)
         {
+            if (errno == EINTR || errno == EAGAIN)
+                continue;
             perror("poll");
-            break;
+            sleep(1);
+            continue;
         }
         time_t now = std::time(NULL);
 

@@ -34,15 +34,13 @@ private:
     bool isServerFd(int fd) const;
     Response buildErrorResponse(const Server &server, int code);
 
-    const Server &getServerByIndex(size_t index) const;
+
 
 public:
     Webserv(const std::vector<Server> &servers);
     ~Webserv();
 
     void initServers();
-    // [FIX LOW-4] Removed dead declarations: checkTimeouts() and getServerByIndex()
-    // had no implementation bodies, causing potential linker errors if called.
     void setNonBlocking(int fd);
     void startLoop();
 };

@@ -13,6 +13,7 @@ public:
     static std::string toLower(const std::string &str);
     static bool isNumeric(const std::string &str);
     static std::string htmlEscape(const std::string &str);
+    static std::string urlDecode(const std::string &str);
 
     template <typename T>
     static std::string toString(T value)
