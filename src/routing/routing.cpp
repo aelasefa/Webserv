@@ -421,7 +421,16 @@ Response Router::routeRequest(const Server& server, Request& request)
         return serveError(413);
 
     if (location && !isMethodAllowed(request.getMethod(), location->methods))
-        return serveError(405);
+    {
+        Response r = serveError(405);
+        std::string allow;
+        for (size_t m = 0; m < location->methods.size(); ++m) {
+            if (m > 0) allow += ", ";
+            allow += location->methods[m];
+        }
+        r.setHeader("Allow", allow);
+        return r;
+    }
 
     if (location && !location->redirect.empty())
         return serveRedirect(location->redirect_code, location->redirect);
@@ -570,5 +579,14 @@ Response Router::routeRequest(const Server& server, Request& request)
         return serveStaticFile(full_path);
     }
 
-    return serveError(405);
+    Response r = serveError(405);
+    if (location) {
+        std::string allow;
+        for (size_t m = 0; m < location->methods.size(); ++m) {
+            if (m > 0) allow += ", ";
+            allow += location->methods[m];
+        }
+        r.setHeader("Allow", allow);
+    }
+    return r;
 }

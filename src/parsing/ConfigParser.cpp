@@ -1,6 +1,27 @@
 
 #include "../../includes/ConfigParser.hpp"
 #include "../../includes/Utils.hpp"
+#include <cerrno>
+#include <cstdlib>
+#include <cctype>
+
+static unsigned long parse_unsigned_long(const std::string &str, bool &ok)
+{
+    ok = false;
+    if (str.empty())
+        return 0;
+    for (size_t i = 0; i < str.size(); i++)
+    {
+        if (!std::isdigit(str[i]))
+            return 0;
+    }
+    errno = 0;
+    unsigned long val = std::strtoul(str.c_str(), NULL, 10);
+    if (errno == ERANGE)
+        return 0;
+    ok = true;
+    return val;
+}
 
 Location::Location() {
     path = "";
@@ -227,7 +248,7 @@ void ConfigParser::parse_location_directive(const std::string& key,
         loc.upload_enable_set = true;
         loc.upload_enable = (value == "on");
     }
-    else if (key == "upload_path") {
+    else if (key == "upload_path" || key == "upload_store") {
         std::string value;
         iss >> value;
         loc.upload_path = strip_semicolon(value);
@@ -237,9 +258,16 @@ void ConfigParser::parse_location_directive(const std::string& key,
         std::string value;
         iss >> value;
         value = strip_semicolon(value);
-        if (!value.empty() && is_number(value))
+        bool ok;
+        unsigned long val = parse_unsigned_long(value, ok);
+        if (ok && val <= 2147483647UL)
         {
-            loc.client_max_body_size = std::atoi(value.c_str());
+            loc.client_max_body_size = static_cast<int>(val);
+            loc.client_max_body_size_set = true;
+        }
+        else
+        {
+            loc.client_max_body_size = 1000000;
             loc.client_max_body_size_set = true;
         }
     }
@@ -251,8 +279,16 @@ void ConfigParser::parse_server_directive(const std::string& key,
         std::string value;
         iss >> value;
         value = strip_semicolon(value);
-        if (!value.empty())
-            srv.listen = std::atoi(value.c_str());
+        bool ok;
+        unsigned long val = parse_unsigned_long(value, ok);
+        if (ok && val >= 1 && val <= 65535)
+        {
+            srv.listen = static_cast<int>(val);
+        }
+        else
+        {
+            throw std::runtime_error("invalid listen port: " + value);
+        }
     }
     else if (key == "host") {
         std::string value;
@@ -278,8 +314,12 @@ void ConfigParser::parse_server_directive(const std::string& key,
         std::string value;
         iss >> value;
         value = strip_semicolon(value);
-        if (!value.empty())
-            srv.client_max_body_size = std::atoi(value.c_str());
+        bool ok;
+        unsigned long val = parse_unsigned_long(value, ok);
+        if (ok && val <= 2147483647UL)
+            srv.client_max_body_size = static_cast<int>(val);
+        else
+            srv.client_max_body_size = 1000000;
     }
     else if (key == "upload_enable") {
         std::string value;
@@ -287,7 +327,7 @@ void ConfigParser::parse_server_directive(const std::string& key,
         value = strip_semicolon(value);
         srv.upload_enable = (value == "on");
     }
-    else if (key == "upload_path") {
+    else if (key == "upload_path" || key == "upload_store") {
         std::string value;
         iss >> value;
         srv.upload_path = strip_semicolon(value);
@@ -297,8 +337,10 @@ void ConfigParser::parse_server_directive(const std::string& key,
         std::string token;
 
         while (iss >> token) {
-            if (is_number(token)) {
-                codes.push_back(std::atoi(token.c_str()));
+            bool ok;
+            unsigned long val = parse_unsigned_long(token, ok);
+            if (ok && val >= 100 && val <= 599) {
+                codes.push_back(static_cast<int>(val));
             } else {
                 std::string path = strip_semicolon(token);
                 for (size_t i = 0; i < codes.size(); i++) {
@@ -354,11 +396,8 @@ Config ConfigParser::parse(const std::string& filename) {
                 has_current_location = false;
             }
             if (state == SERVER || state == LOCATION) {
-                if (state == LOCATION) {
-                }
-                if (has_current_location == false) {
-                    if (!(current_server.listen == 0 && current_server.server_name.empty() && current_server.locations.empty())) {
-                    }
+                if (!(current_server.listen == 0 && current_server.server_name.empty() && current_server.locations.empty())) {
+                    config.servers.push_back(current_server);
                 }
             }
             current_server.reset();
