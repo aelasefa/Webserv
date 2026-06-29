@@ -13,7 +13,6 @@ Client::Client(int fd, size_t serverIndex)
             _serverIndex(serverIndex),
             _peerClosed(false),
             _request(""),
-            _isComplete(false),
             _contentLength(0),
             _parser(),
             _maxBodySize(std::numeric_limits<size_t>::max()),
@@ -114,13 +113,6 @@ void Client::appendData(const std::string &buffer)
     _request += buffer;
 }
 
-bool Client::checkRequestComplete()
-{
-    if (_hasError)
-        return true;
-
-    return _request.find("\r\n\r\n") != std::string::npos;
-}
 
 void Client::setResponse(const std::string &response)
 {
@@ -268,7 +260,6 @@ void Client::setError(int statusCode)
 {
     _hasError = true;
     _errorCode = statusCode;
-    _isComplete = true;
 }
 
 bool Client::hasError() const
@@ -297,22 +288,6 @@ bool Client::isIdle(time_t now, int timeoutSec) const
     return (timeoutSec > 0) && (now - _lastActive >= timeoutSec);
 }
 
-void Client::reset()
-{
-    closeResponseFile();
-    clearCgi();
-    _request.clear();
-    _responseBuffer.clear();
-
-    _isComplete = false;
-    _contentLength = 0;
-    _bytesSent = 0;
-    _hasError = false;
-    _errorCode = 0;
-    _closeAfterResponse = false;
-    _parser.reset();
-    _parser.setMaxBodySize(_maxBodySize);
-}
 
 void Client::resetForNextRequest(const std::string &remaining)
 {
@@ -320,7 +295,6 @@ void Client::resetForNextRequest(const std::string &remaining)
     clearCgi();
     _request = remaining;
     _responseBuffer.clear();
-    _isComplete = false;
     _contentLength = 0;
     _bytesSent = 0;
     _hasError = false;
@@ -345,20 +319,6 @@ const std::string &Client::getRequest() const
     return _request;
 }
 
-size_t Client::getBytesSent() const
-{
-    return _bytesSent;
-}
-
-size_t Client::getResponseSize() const
-{
-    return _responseBuffer.size();
-}
-
-bool Client::isComplete() const
-{
-    return _isComplete;
-}
 
 
 // ---------- CGI integration ----------

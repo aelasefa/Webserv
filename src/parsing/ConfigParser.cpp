@@ -39,20 +39,8 @@ Location::Location() {
     client_max_body_size_set = false;
 }
 
-static std::string trim(const std::string& s) {
-    size_t start = 0;
-    size_t end = s.length();
-
-    while (start < end && (s[start] == ' ' || s[start] == '\t'))
-        start++;
-    while (end > start && (s[end - 1] == ' ' || s[end - 1] == '\t' || s[end - 1] == '\n' || s[end - 1] == '\r'))
-        end--;
-
-    return s.substr(start, end - start);
-}
-
 static std::string strip_semicolon(const std::string& s) {
-    std::string result = trim(s);
+    std::string result = StringUtils::trim(s);
     if (!result.empty() && result[result.length() - 1] == ';')
         result.erase(result.length() - 1);
     return result;
@@ -137,7 +125,7 @@ bool ConfigParser::is_location_line(const std::string& line) {
 }
 
 bool ConfigParser::is_close_brace(const std::string& line) {
-    return (trim(line) == "}");
+    return (StringUtils::trim(line) == "}");
 }
 
 
@@ -372,7 +360,7 @@ Config ConfigParser::parse(const std::string& filename) {
         line_number++;
         line = remove_cr(line);
 
-        std::string trimmed = trim(line);
+        std::string trimmed = StringUtils::trim(line);
         if (trimmed.empty()) {
             continue;
         }
@@ -385,7 +373,7 @@ Config ConfigParser::parse(const std::string& filename) {
         size_t comment_pos = trimmed.find('#');
         if (comment_pos != std::string::npos) {
             trimmed = trimmed.substr(0, comment_pos);
-            trimmed = trim(trimmed);
+            trimmed = StringUtils::trim(trimmed);
             if (trimmed.empty()) continue;
         }
 

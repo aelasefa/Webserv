@@ -33,7 +33,6 @@ private:
     static bool isMethodAllowed(const std::string& method, const std::vector<std::string>& allowed);
     static bool isCgiExtension(const std::string& ext, const std::vector<std::string>& cgi_ext);
     static std::string findInterpreter(const std::string& ext, const std::vector<std::string>& cgi_ext, const std::vector<std::string>& cgi_path);
-    static std::string readFile(const std::string& path);
     static std::string generateDirectoryListing(const std::string& full_path, const std::string& request_path);
     static Response serveStaticFile(const std::string& path);
     static Response serveRedirect(int code, const std::string& location);

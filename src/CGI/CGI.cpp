@@ -265,6 +265,6 @@ Response CGIHandler::buildResponse(const std::string& cgiOutput)
         res.setHeader("Content-Type", "text/html");
 
     res.setBody(bodyPart);
-    res.setHeader("Content-Length", intToString(bodyPart.size()));
+    res.setHeader("Content-Length", StringUtils::toString(bodyPart.size()));
     return res;
 }

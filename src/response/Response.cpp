@@ -1,4 +1,5 @@
 #include "../../includes/Response.hpp"
+#include "../../includes/StringUtils.hpp"
 #include <sstream>
 
 #include <algorithm>
@@ -10,12 +11,7 @@ void Response::addCookie(const std::string &cookie)
 }
 
 
-std::string intToString(size_t value)
-{
-    std::ostringstream oss;
-    oss << value;
-    return oss.str();
-}
+
 
 Response::Response() : statusCode(200),
         statusMessage("OK"), body(""),
@@ -123,7 +119,7 @@ size_t Response::getFileSize() const
 std::string Response::buildHeaderBlock(size_t contentLength) const {
     std::string result;
     result += "HTTP/1.1 ";
-    result += intToString(statusCode);
+    result += StringUtils::toString(statusCode);
     result += " ";
     result += statusMessage;
     result += "\r\n";
@@ -145,7 +141,7 @@ std::string Response::buildHeaderBlock(size_t contentLength) const {
     if (!hasContentType)
         result += std::string("Content-Type: text/plain\r\n");
     if (!hasContentLength)
-        result += std::string("Content-Length: ") + intToString(contentLength) + "\r\n";
+        result += std::string("Content-Length: ") + StringUtils::toString(contentLength) + "\r\n";
     if (!hasConnection)
         result += std::string("Connection: ") + _connection + "\r\n";
     for (std::vector< std::pair<std::string, std::string> >::const_iterator it = headers.begin(); it != headers.end(); ++it) {

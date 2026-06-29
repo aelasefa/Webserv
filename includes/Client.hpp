@@ -19,7 +19,6 @@ private:
     bool _peerClosed;
 
     std::string _request;
-    bool _isComplete;
     size_t _contentLength;
     Request _parser;
     size_t _maxBodySize;
@@ -51,7 +50,6 @@ public:
     bool readData();
     void appendData(const std::string &buffer);
 
-    bool checkRequestComplete();
 
     void setResponse(const std::string &response);
     bool setResponseHeaderAndFile(const std::string &headerBlock,
@@ -78,15 +76,11 @@ public:
 
     bool isIdle(time_t now, int timeoutSec) const;
 
-    void reset();
     void resetForNextRequest(const std::string &remaining);
 
     int getFd() const;
     size_t getServerIndex() const;
     const std::string &getRequest() const;
-    size_t getBytesSent() const;
-    size_t getResponseSize() const;
-    bool isComplete() const;
     time_t getLastActivityTime() const { return _lastActive; }
     void updateLastActivityTime() { _lastActive = std::time(NULL); }
 

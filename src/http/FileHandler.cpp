@@ -92,29 +92,6 @@ bool writeAll(int fd, const std::string &body)
     }
     return true;
 }
-bool createTempFile(const std::string &targetPath, std::string &tempPath, int &fd)
-{
-    std::string dir = targetPath.substr(0, targetPath.find_last_of('/'));
-
-    if (dir.empty())
-        dir = ".";
-
-    for (int i = 0; i < 100; i++)
-    {
-        std::ostringstream oss;
-        oss << dir << "/.tmp_" << getpid() << "_" << i;
-
-        tempPath = oss.str();
-
-        fd = open(tempPath.c_str(),
-                  O_WRONLY | O_CREAT | O_EXCL,
-                  0644);
-
-        if (fd >= 0)
-            return true;
-    }
-    return false;
-}
 
 // ================= RESPONSE =================
 

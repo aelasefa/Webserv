@@ -48,7 +48,4 @@ class Response
 
         const std::vector< std::pair<std::string, std::string> > &getHeaderList() const;
 };
-    
-std::string intToString(size_t value);
-
 #endif

@@ -88,41 +88,6 @@ static int parseStatusCode(const std::string &status)
     return code;
 }
 
-static int createServerSocket(int port)
-{
-    std::cout << "[SERVER] Creating socket..." << std::endl;
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0)
-        throw std::runtime_error("socket failed");
-    std::cout << "[SERVER] Socket created fd=" << server_fd << std::endl;
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    sockaddr_in addr;
-    std::memset(&addr, 0, sizeof(addr));
-    addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port        = htons(port);
-
-    std::cout << "[SERVER] Binding to port " << port << std::endl;
-    if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0)
-    {
-        std::cerr << "[ERROR] bind failed on port " << port
-                  << ": " << strerror(errno) << std::endl;
-        close(server_fd);
-        return -1;
-    }
-    std::cout << "[SERVER] Bind successful" << std::endl;
-    std::cout << "[SERVER] Listening on port " << port << std::endl;
-
-    if (listen(server_fd, SOMAXCONN) < 0)
-        throw std::runtime_error("listen failed");
-
-    NetworkUtils::setNonBlocking(server_fd);
-
-    return server_fd;
-}
-
 Webserv::Webserv(const std::vector<Server> &servers) : _servers(servers) {}
 
 Webserv::~Webserv() {}
@@ -161,7 +126,7 @@ void Webserv::initServers()
 
     for (size_t i = 0; i < _servers.size(); i++)
     {
-        int server_fd = createServerSocket(_servers[i].listen);
+        int server_fd = NetworkUtils::createServerSocket(_servers[i].listen);
         if (server_fd == -1)
             continue;
         addServerToPoll(server_fd);
