@@ -1,4 +1,7 @@
 #include "../../includes/CGI.hpp"
+#include "../../includes/Server.hpp"
+#include "../../includes/StringUtils.hpp"
+#include <cerrno>
 
 CGI::CGI() {}
 
@@ -12,11 +15,11 @@ void CGI::setInterpreter(const std::string& interpreter) {
     _interpreter = interpreter;
 }
 
-std::vector<std::string> CGI::setEnv(const Request& request) {
+std::vector<std::string> CGI::setEnv(const Request& request, const Server& server) {
     std::vector<std::string> env;
     env.push_back("REQUEST_METHOD=" + request.getMethod());
     env.push_back("QUERY_STRING=" + request.getQueryString());
-    env.push_back("CONTENT_LENGTH=" + intToString(request.getBody().size()));
+    env.push_back("CONTENT_LENGTH=" + StringUtils::toString(request.getBody().size()));
     env.push_back("CONTENT_TYPE=" + request.getHeader("Content-Type"));
     env.push_back("SCRIPT_NAME=" + _scriptPath);
     env.push_back("GATEWAY_INTERFACE=CGI/1.1");
@@ -24,13 +27,19 @@ std::vector<std::string> CGI::setEnv(const Request& request) {
     env.push_back("REDIRECT_STATUS=200");
     env.push_back("SERVER_PROTOCOL=HTTP/1.1");
     
+    env.push_back("PATH_INFO=" + request.getPath());
+    env.push_back("SERVER_NAME=" + (server.server_name.empty() ? "localhost" : server.server_name));
+    env.push_back("SERVER_PORT=" + StringUtils::toString(server.listen));
+    env.push_back("REMOTE_ADDR=127.0.0.1");
+    env.push_back("DOCUMENT_ROOT=" + server.root);
+    
     const std::map<std::string, std::string>& headers = request.getHeaders();
     for (std::map<std::string, std::string>::const_iterator it = headers.begin(); 
          it != headers.end(); ++it) {
         std::string headerKey = it->first;
         std::string headerValue = it->second;
         
-        if (headerKey == "Content-Type" || headerKey == "Content-Length")
+        if (headerKey == "content-type" || headerKey == "content-length")
             continue;
         
         std::string envKey = "HTTP_";
@@ -48,19 +57,26 @@ std::vector<std::string> CGI::setEnv(const Request& request) {
     return env;
 }
 
-void CGI::start(const Request& request, CGIState& state) {
+void CGI::start(const Request& request, CGIState& state, const Server& server) {
     if (_interpreter.empty() || _scriptPath.empty())
         throw std::runtime_error("interpreter or script path not set");
     
     int inputPipe[2];
     int outputPipe[2];
-    std::vector<std::string> envStrings = setEnv(request);
+    std::vector<std::string> envStrings = setEnv(request, server);
     std::vector<char *> envp;
     for (size_t i = 0; i < envStrings.size(); i++)
         envp.push_back(const_cast<char*>(envStrings[i].c_str()));
     envp.push_back(NULL);
-    if (pipe(inputPipe) == -1 || pipe(outputPipe) == -1)
+    
+    if (pipe(inputPipe) == -1)
         throw std::runtime_error("pipe failed");
+    if (pipe(outputPipe) == -1) {
+        close(inputPipe[0]);
+        close(inputPipe[1]);
+        throw std::runtime_error("pipe failed");
+    }
+    
     state.pid = fork();
     if (state.pid == -1) {
         close(inputPipe[0]);
@@ -76,9 +92,26 @@ void CGI::start(const Request& request, CGIState& state) {
         dup2(outputPipe[1], STDOUT_FILENO);
         close(inputPipe[0]);
         close(outputPipe[1]);
+        
+        std::string absScriptPath = _scriptPath;
+        if (!absScriptPath.empty() && absScriptPath[0] != '/') {
+            char cwd[1024];
+            if (getcwd(cwd, sizeof(cwd)) != NULL) {
+                absScriptPath = std::string(cwd) + "/" + _scriptPath;
+            }
+        }
+        
+        std::string scriptDir = absScriptPath;
+        size_t lastSlash = scriptDir.find_last_of('/');
+        if (lastSlash != std::string::npos) {
+            scriptDir = scriptDir.substr(0, lastSlash);
+            if (!scriptDir.empty())
+                chdir(scriptDir.c_str());
+        }
+        
         char* argv[] = {
             (char *)_interpreter.c_str(),
-            (char *)_scriptPath.c_str(),
+            (char *)absScriptPath.c_str(),
             NULL
         };
         execve(_interpreter.c_str(), argv, envp.data());
@@ -87,18 +120,6 @@ void CGI::start(const Request& request, CGIState& state) {
     close(inputPipe[0]);
     close(outputPipe[1]);
 
-    // if (request.getMethod() == "POST") {
-    //     const std::string body = request.getBody();
-    //     size_t total = 0;
-    //     while (total < body.size()) {
-    //         ssize_t written = write(inputPipe[1],
-    //             body.c_str() + total,
-    //             body.size() - total);
-    //         if (written <= 0)
-    //             break;
-    //         total += written;
-    //     }
-    // }
     state.outputFd = outputPipe[0];
     state.startTime = time(NULL);
     state.running = true;
@@ -125,6 +146,9 @@ bool CGI::update(CGIState& state) {
         if (state.outputFd != -1)
             close(state.outputFd);
         state.running = false;
+        state.outputFd = -1;
+        state.inputFd = -1;
+        state.pid = -1;
         throw std::runtime_error("CGI timeout");
     }
 
@@ -138,35 +162,49 @@ bool CGI::update(CGIState& state) {
                 state.inputFd,
                 body.c_str() + state.written,
                 body.size() - state.written
-        );
+            );
 
-        if (n > 0)
-            state.written += n;
-        else
-            throw std::runtime_error("write failed");
+            if (n > 0)
+            {
+                state.written += n;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (state.written == body.size())
+        {
+            close(state.inputFd);
+            state.inputFd = -1;
+        }
     }
 
-    if (state.written == body.size())
-    {
-        close(state.inputFd);
-        state.inputFd = -1;
-    }
-    }
     while ((bytes = read(state.outputFd, buffer, sizeof(buffer))) > 0)
         state.result.append(buffer, bytes);
+
     pid_t p = waitpid(state.pid, &state.status, WNOHANG);
     if (p == -1)
         throw std::runtime_error("waitpid failed");
     if (p == 0)
         return false;
+
+    while ((bytes = read(state.outputFd, buffer, sizeof(buffer))) > 0)
+        state.result.append(buffer, bytes);
+
     if (!WIFEXITED(state.status) || WEXITSTATUS(state.status) != 0)
     {
         close(state.outputFd);
+        state.outputFd = -1;
+        state.pid = -1;
         throw std::runtime_error("CGI execution failed");
     }
+
     state.running = false;
     close(state.outputFd);
-    state.outputFd = -1;    
+    state.outputFd = -1;
+    state.pid = -1;
     return true;
 }
 

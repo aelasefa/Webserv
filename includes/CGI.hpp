@@ -38,6 +38,8 @@ struct CGIState {
 	{}
 };
 
+class Server;
+
 class CGI {
 	private:
 		std::string _scriptPath;
@@ -48,8 +50,8 @@ class CGI {
 
 		void setScriptPath(const std::string& path);
 		void setInterpreter(const std::string& interpreter);
-		std::vector<std::string> setEnv(const Request& request);
-		void start(const Request& request, CGIState& state);
+		std::vector<std::string> setEnv(const Request& request, const Server& server);
+		void start(const Request& request, CGIState& state, const Server& server);
 		bool update(CGIState &state);
 };
 
