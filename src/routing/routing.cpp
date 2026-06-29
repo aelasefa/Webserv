@@ -368,6 +368,15 @@ Response Router::routeRequest(const Server& server, Request& request)
     size_t best_match = 0;
     std::string request_path = stripQueryAndFragment(request.getPath());
 
+    // Check for path traversal
+    if (request_path == ".." ||
+        request_path.find("../") == 0 ||
+        request_path.find("/../") != std::string::npos ||
+        (request_path.size() >= 3 && request_path.compare(request_path.size() - 3, 3, "/..") == 0))
+    {
+        return serveError(400);
+    }
+
     for (size_t i = 0; i < server.locations.size(); i++)
     {
         const Location& loc = server.locations[i];
@@ -487,7 +496,12 @@ Response Router::routeRequest(const Server& server, Request& request)
 
         std::string filename = sanitizeFilename(baseName(request_path));
         if (filename.empty())
-            return serveError(403);
+        {
+            static int counter = 0;
+            std::stringstream ss;
+            ss << "upload_" << time(NULL) << "_" << counter++;
+            filename = ss.str();
+        }
 
         std::string target = uploadPath;
         if (!target.empty() && target[target.size() - 1] != '/')

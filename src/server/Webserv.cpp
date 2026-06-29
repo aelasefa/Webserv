@@ -559,7 +559,14 @@ void Webserv::pollRunningCgis()
             CGIState &state = client.getCgiState();
             Response res;
 
-            if (state.result.empty())
+            if (client.hasError())
+            {
+                const size_t idx    = client.getServerIndex();
+                const Server &srv   = (idx < _servers.size()) ? _servers[idx] : _servers[0];
+                res = buildErrorResponse(srv, client.getErrorCode());
+                client.setCloseAfterResponse(true);
+            }
+            else if (state.result.empty())
             {
                 const size_t idx    = client.getServerIndex();
                 const Server &srv   = (idx < _servers.size()) ? _servers[idx] : _servers[0];

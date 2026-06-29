@@ -278,6 +278,13 @@ bool Request::parseHeaders(std::string &buffer)
 
         if (line.empty())
         {
+            if (_hasContentLength && _hasTransferEncoding)
+            {
+                _errorStatus = "400 Bad Request";
+                _state       = ERROR;
+                return false;
+            }
+
             if (_hasTransferEncoding && _isChunked)
             {
                 _contentLength    = 0;

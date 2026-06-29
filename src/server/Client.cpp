@@ -365,10 +365,16 @@ bool Client::updateCgi()
         }
         return false;
     }
-    catch (const std::exception &)
+    catch (const std::exception &ex)
     {
         _cgiRunning = false;
         _cgiState.result.clear();
+        std::string msg = ex.what();
+        if (msg.find("timeout") != std::string::npos)
+            _errorCode = 504;
+        else
+            _errorCode = 500;
+        _hasError = true;
         return true;
     }
 }
