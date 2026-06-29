@@ -3,25 +3,62 @@
 SessionManager::SessionManager() {}
 SessionManager::~SessionManager() {}
 
-bool SessionManager::exists(const std::string &sessionId) const
+void SessionManager::evictExpired()
 {
-    return _sessions.find(sessionId) != _sessions.end();
+    time_t now = time(NULL);
+    for (std::map<std::string, SessionData>::iterator it = _sessions.begin(); it != _sessions.end(); )
+    {
+        if (now - it->second.lastActive > 1800)
+        {
+            std::map<std::string, SessionData>::iterator to_erase = it;
+            ++it;
+            _sessions.erase(to_erase);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+bool SessionManager::exists(const std::string &sessionId)
+{
+    evictExpired();
+    std::map<std::string, SessionData>::iterator it = _sessions.find(sessionId);
+    if (it != _sessions.end())
+    {
+        it->second.lastActive = time(NULL);
+        return true;
+    }
+    return false;
 }
 
 void SessionManager::create(const std::string &sessionId, const std::string &theme)
 {
-    _sessions[sessionId] = theme;
+    evictExpired();
+    SessionData data;
+    data.theme = theme;
+    data.lastActive = time(NULL);
+    _sessions[sessionId] = data;
 }
 
-std::string SessionManager::getTheme(const std::string &sessionId) const
+std::string SessionManager::getTheme(const std::string &sessionId)
 {
-    std::map<std::string, std::string>::const_iterator it = _sessions.find(sessionId);
+    evictExpired();
+    std::map<std::string, SessionData>::iterator it = _sessions.find(sessionId);
     if (it == _sessions.end())
         return "";
-    return it->second;
+    it->second.lastActive = time(NULL);
+    return it->second.theme;
 }
 
 void SessionManager::setTheme(const std::string &sessionId, const std::string &theme)
 {
-    _sessions[sessionId] = theme;
+    evictExpired();
+    std::map<std::string, SessionData>::iterator it = _sessions.find(sessionId);
+    if (it != _sessions.end())
+    {
+        it->second.theme = theme;
+        it->second.lastActive = time(NULL);
+    }
 }
