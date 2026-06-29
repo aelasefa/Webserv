@@ -80,3 +80,5 @@ www/uploads/*
 trashs
 changes.txtwww/vedio.mp4
 www/vedio.mp4
+www/cgi-bin/.sessions
+
