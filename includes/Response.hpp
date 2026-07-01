@@ -5,9 +5,6 @@
 #include <vector>
 #include <utility>
 #include <cstddef>
-// [FIX CRIT-4] Removed #include "Request.hpp".
-// Response does not use any Request type in its interface; the include created
-// unnecessary coupling and a potential circular-dependency path.
 
 class Response
 {
