@@ -98,6 +98,7 @@ function req(method, path, opts) {
   var init = { method: method };
   if (opts.body != null) init.body    = opts.body;
   if (opts.headers)      init.headers = opts.headers;
+  init.redirect = 'manual';
 
   fetch(path, init)
     .then(function (r) {

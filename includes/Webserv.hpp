@@ -6,8 +6,12 @@
 #include <poll.h>
 #include <vector>
 #include <map>
+#include <signal.h>
 
 #include "Client.hpp"
+
+extern volatile sig_atomic_t g_running;
+
 #include "Server.hpp"
 #include "SessionManager.hpp"
 #include "Request.hpp"

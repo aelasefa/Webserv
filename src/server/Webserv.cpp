@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <fstream>
 #include <sstream>
+#include <cerrno>
 
 static const int POLL_TIMEOUT_MS        = 1000;
 static const int CLIENT_IDLE_TIMEOUT_SEC = 60;
@@ -90,7 +91,20 @@ static int parseStatusCode(const std::string &status)
 
 Webserv::Webserv(const std::vector<Server> &servers) : _servers(servers) {}
 
-Webserv::~Webserv() {}
+Webserv::~Webserv()
+{
+    for (std::map<int, Client>::iterator it = _clients.begin(); it != _clients.end(); ++it)
+    {
+        close(it->first);
+    }
+    _clients.clear();
+
+    for (size_t i = 0; i < _server_fds.size(); ++i)
+    {
+        close(_server_fds[i]);
+    }
+    _server_fds.clear();
+}
 
 static std::string generateSessionId()
 {
@@ -588,13 +602,17 @@ void Webserv::startLoop()
     if (_poll_fds.empty())
         throw std::runtime_error("no server socket could be bound");
 
-    while (true)
+    while (g_running)
     {
         int poll_ret = poll(&_poll_fds[0], _poll_fds.size(), POLL_TIMEOUT_MS);
         if (poll_ret < 0)
         {
             if (errno == EINTR || errno == EAGAIN)
+            {
+                if (!g_running)
+                    break;
                 continue;
+            }
             perror("poll");
             sleep(1);
             continue;
