@@ -147,6 +147,7 @@ make re       # full rebuild
 - [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)
 - [MDN Web Docs — HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
 - [nginx documentation](https://nginx.org/en/docs/)
+- [RFC 6265 — cookies and HTTP State Management](https://datatracker.ietf.org/doc/html/rfc6265)
 
 ### System Calls & I/O Multiplexing
 
@@ -157,11 +158,12 @@ make re       # full rebuild
 
 ### CGI
 
+- [CGI implementation guide](https://www.alimnaqvi.com/blog/webserv#cgi)
 - [RFC 3875 — The Common Gateway Interface (CGI/1.1)](https://datatracker.ietf.org/doc/html/rfc3875)
 
 ### Tutorials & Articles
 
-- [How to build a simple HTTP server in C](https://medium.com/from-the-scratch/http-server-what-do-you-need-to-know-to-build-a-simple-http-server-from-scratch-d1ef8945e4fa)
+- [How to build a simple HTTP server](https://medium.com/from-the-scratch/http-server-what-do-you-need-to-know-to-build-a-simple-http-server-from-scratch-d1ef8945e4fa)
 - [Writing a Web Server from Scratch (series)](https://www.codequoi.com/en/creating-and-killing-child-processes-in-c/)
 
 
